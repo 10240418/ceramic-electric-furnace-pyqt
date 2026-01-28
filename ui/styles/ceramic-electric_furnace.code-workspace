@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"name": "ceramic-electric_furnace-flutter",
+			"path": "../../../ceramic-electric_furnace-flutter"
+		},
+		{
+			"name": "ceramic-electric-furnace-backend",
+			"path": "../../../ceramic-electric-furnace-backend"
+		},
+		{
+			"name": "ceramic-electric-furnace-pyqt",
+			"path": "../.."
+		}
+	]
+}

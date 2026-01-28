@@ -1,0 +1,18 @@
+# #3电炉 - PyQt6 前端依赖
+
+# PyQt6 核心
+PyQt6==6.6.1
+PyQt6-Charts==6.6.0
+
+# 图表库
+pyqtgraph==0.13.3
+
+# 数据处理
+numpy==1.26.3
+
+# 配置管理
+python-dotenv==1.0.0
+
+# 日志
+loguru==0.7.2
+
