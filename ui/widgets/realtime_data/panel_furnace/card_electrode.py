@@ -29,14 +29,14 @@ class CardElectrode(QFrame):
         # 监听主题变化
         self.theme_manager.theme_changed.connect(self.on_theme_changed)
     
-    # 2. 初始化 UI
+    # 2. 初始化 UI 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(8)
         
         # 标题（居中）
-        self.title_label = QLabel(f"⚡ {self.electrode_no}#电极")
+        self.title_label = QLabel(f"{self.electrode_no}#电极")
         self.title_label.setObjectName("electrodeTitle")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.title_label)
@@ -86,24 +86,25 @@ class CardElectrode(QFrame):
             
             QLabel#electrodeTitle {{
                 color: {colors.GLOW_PRIMARY};
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
             }}
             
             QLabel[objectName^="depth_"] {{
                 color: {colors.TEXT_PRIMARY};
-                font-size: 14px;
+                font-size: 16px;
+                font-weight: bold;
             }}
             
             QLabel[objectName^="current_"] {{
                 color: {colors.GLOW_ORANGE};
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: bold;
             }}
             
             QLabel[objectName^="voltage_"] {{
                 color: {colors.GLOW_GREEN};
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: bold;
             }}
         """)

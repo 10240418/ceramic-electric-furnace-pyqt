@@ -1,5 +1,5 @@
 """
-#3电炉 - PyQt6 前端入口
+#3电炉 - PyQt6 前端 + 后端集成入口
 """
 import sys
 import os
@@ -8,19 +8,14 @@ from pathlib import Path
 # 设置项目根目录
 BASE_DIR = Path(__file__).resolve().parent
 
-# 确保当前目录在 sys.path 最前面（优先导入前端的 config.py）
+# 确保当前目录在 sys.path 最前面
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
-
-# 添加后端路径到 sys.path（用于导入后端模块）
-BACKEND_DIR = BASE_DIR.parent / "ceramic-electric-furnace-backend"
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.append(str(BACKEND_DIR))  # 使用 append 而不是 insert，确保前端优先
 
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
 from PyQt6.QtCore import Qt
-import logging
+from loguru import logger
 
 # 导入前端配置
 from config import (
@@ -35,16 +30,15 @@ from config import (
 # 确保日志目录存在
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
-# 配置日志
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(LOG_FILE, encoding='utf-8')
-    ]
+# 配置 loguru 日志
+logger.add(
+    LOG_FILE,
+    rotation="10 MB",
+    retention="7 days",
+    level=LOG_LEVEL,
+    encoding="utf-8",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
 )
-logger = logging.getLogger(__name__)
 
 
 # 1. 创建系统托盘图标（蓝色圆点）
@@ -68,19 +62,14 @@ def main():
     logger.info(f"🚀 {APP_NAME} v{APP_VERSION} 启动")
     logger.info("=" * 60)
     logger.info(f"📁 项目目录: {BASE_DIR}")
-    logger.info(f"📁 后端目录: {BACKEND_DIR}")
     logger.info(f"📝 日志文件: {LOG_FILE}")
     logger.info("-" * 60)
     
     # 创建 Qt 应用
-    # 注意：PyQt6 默认启用高 DPI 支持，无需手动设置
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(APP_VERSION)
     app.setOrganizationName("Clutch Team")
-    
-    # 设置退出行为：关闭最后一个窗口时不退出应用（因为有系统托盘）
-    app.setQuitOnLastWindowClosed(False)
     
     try:
         # 导入主窗口
@@ -100,22 +89,22 @@ def main():
         
         # 显示/隐藏窗口
         show_action = tray_menu.addAction("显示窗口")
-        show_action.triggered.connect(lambda: window.showFullScreen())
+        show_action.triggered.connect(lambda: window.show())
         
         hide_action = tray_menu.addAction("隐藏窗口")
         hide_action.triggered.connect(window.hide)
         
         tray_menu.addSeparator()
         
-        # 退出应用
+        # 退出应用（触发主窗口的 closeEvent）
         quit_action = tray_menu.addAction("退出程序")
-        quit_action.triggered.connect(app.quit)
+        quit_action.triggered.connect(window.close)
         
         tray_icon.setContextMenu(tray_menu)
         
         # 双击托盘图标显示窗口
         tray_icon.activated.connect(
-            lambda reason: window.showFullScreen() 
+            lambda reason: window.show() 
             if reason == QSystemTrayIcon.ActivationReason.DoubleClick 
             else None
         )
@@ -124,11 +113,23 @@ def main():
         tray_icon.show()
         logger.info("✅ 系统托盘已创建")
         
-        # 显示窗口（全屏模式）
-        window.showFullScreen()
+        # 设置窗口大小为19寸4:3分辨率（1280x1024）
+        window.resize(1280, 1024)
+        
+        # 窗口居中显示
+        from PyQt6.QtGui import QScreen
+        screen = app.primaryScreen().geometry()
+        window_geometry = window.frameGeometry()
+        center_point = screen.center()
+        window_geometry.moveCenter(center_point)
+        window.move(window_geometry.topLeft())
+        
+        # 显示窗口（窗口模式）
+        window.show()
         logger.info("✅ 主窗口已创建并显示")
-        logger.info("✅ 窗口功能：")
-        logger.info("   • 全屏模式：默认启用")
+        logger.info("📐 窗口功能：")
+        logger.info("   • 窗口大小：1280x1024 (19寸 4:3)")
+        logger.info("   • 启动模式：窗口模式（居中显示）")
         logger.info("   • 最小化：点击工具栏按钮")
         logger.info("   • 切换全屏：F11 或工具栏按钮")
         logger.info("   • 退出程序：Esc 或 Alt+F4")
@@ -142,16 +143,14 @@ def main():
         sys.exit(exit_code)
     
     except ImportError as e:
-        logger.error(f"❌ 导入错误: {e}")
+        logger.error(f" 导入错误: {e}")
         logger.error("提示: 请确保已创建 ui/main_window.py 文件")
-        logger.error(f"提示: 请确保后端目录存在: {BACKEND_DIR}")
         sys.exit(1)
     
     except Exception as e:
-        logger.error(f"❌ 启动失败: {e}", exc_info=True)
+        logger.error(f" 启动失败: {e}", exc_info=True)
         sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
-

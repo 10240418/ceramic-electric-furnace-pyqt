@@ -22,7 +22,7 @@ class PanelFurnaceBg(QFrame):
         
         # 加载背景图
         self.bg_pixmap = None
-        furnace_path = Path(__file__).parent.parent.parent.parent / "assets" / "images" / "furnace.png"
+        furnace_path = Path(__file__).parent.parent.parent.parent.parent / "assets" / "images" / "furnace.png"
         if furnace_path.exists():
             self.bg_pixmap = QPixmap(str(furnace_path))
         
@@ -36,7 +36,7 @@ class PanelFurnaceBg(QFrame):
     def init_ui(self):
         # 使用普通布局（不使用堆叠布局）
         content_layout = QVBoxLayout(self)
-        content_layout.setContentsMargins(20, 20, 20, 20)  # padding 20
+        content_layout.setContentsMargins(16, 0, 16, 16)  # 顶部 0px，左右 16px，底部 16px
         content_layout.setSpacing(8)
         
         # 顶部：炉次信息栏
@@ -109,7 +109,9 @@ class PanelFurnaceBg(QFrame):
     # 4. 更新炉次信息
     def update_batch_info(self, batch_no: str, start_time: str, run_duration: str):
         """更新炉次信息"""
-        self.batch_info_bar.set_batch_info(batch_no, start_time, run_duration)
+        # 判断是否正在冶炼（batch_no 不为空表示正在冶炼）
+        is_smelting = bool(batch_no)
+        self.batch_info_bar.set_smelting_state(is_smelting, batch_no, start_time, run_duration)
     
     # 5. 更新电极数据
     def update_electrode(self, electrode_no: int, depth_mm: float, current_a: float, voltage_v: float):

@@ -22,16 +22,20 @@ class IndicatorValve(QFrame):
         self.init_ui()
         self.apply_styles()
         
+        # 设置 sizePolicy 为 Expanding，让组件自适应高度
+        from PyQt6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
         # 监听主题变化
         self.theme_manager.theme_changed.connect(self.on_theme_changed)
     
     # 2. 初始化 UI
     def init_ui(self):
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(0, 2, 0, 2)  # 修改为：左0 上2 右0 下2
+        main_layout.setSpacing(2)  # 从8px改为2px，左侧和右侧容器之间的间距
         
-        # 左侧 70%：仪表盘 + 编号/百分比
+        # 左侧 78%：仪表盘 + 编号/百分比
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -47,32 +51,31 @@ class IndicatorValve(QFrame):
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(8)
         
-        # 编号 (20%)
+        # 编号 (20%) - 减小字体
         self.num_label = QLabel(f"{self.valve_id}#")
         self.num_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        font = QFont("Microsoft YaHei", 24)
+        font = QFont("Microsoft YaHei", 18)  # 从24减小到18
         font.setBold(True)
         self.num_label.setFont(font)
         bottom_layout.addWidget(self.num_label, 20)
         
-        # 百分比 (80%)
+        # 百分比 (80%) - 使用富文本，单独减小百分号
         self.percent_label = QLabel("0%")
         self.percent_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        font = QFont("Roboto Mono", 32)
-        font.setBold(True)
-        self.percent_label.setFont(font)
+        self.percent_label.setMinimumWidth(100)
+        self.percent_label.setTextFormat(Qt.TextFormat.RichText)  # 启用富文本
         bottom_layout.addWidget(self.percent_label, 80)
         
         left_layout.addWidget(bottom_widget, 40)
         
-        main_layout.addWidget(left_widget, 76)
+        main_layout.addWidget(left_widget, 78)  # 从76%改为78%
         
-        # 右侧 24%：状态按钮容器（带边框）
+        # 右侧 22%：状态按钮容器（带边框）- 取消内边距，贴边显示
         self.status_container = QFrame()
         self.status_container.setObjectName("statusContainer")
         status_container_layout = QVBoxLayout(self.status_container)
-        status_container_layout.setContentsMargins(4, 4, 4, 4)
-        status_container_layout.setSpacing(5)
+        status_container_layout.setContentsMargins(0, 0, 0, 0)  # 从(4,4,4,4)改为(0,0,0,0)
+        status_container_layout.setSpacing(0)  # 从5改为0，按钮之间无间距
         
         # 关/停/开 三个状态按钮（垂直排列）
         self.btn_close = self.create_status_button("关")
@@ -83,7 +86,7 @@ class IndicatorValve(QFrame):
         status_container_layout.addWidget(self.btn_stop)
         status_container_layout.addWidget(self.btn_open)
         
-        main_layout.addWidget(self.status_container, 24)
+        main_layout.addWidget(self.status_container, 22)  # 从24%改为22%
     
     # 3. 创建状态按钮
     def create_status_button(self, text: str) -> QLabel:
@@ -99,8 +102,12 @@ class IndicatorValve(QFrame):
         self.current_status = status
         self.open_percentage = max(0.0, min(100.0, open_percent))
         
-        # 更新百分比显示
-        self.percent_label.setText(f"{int(self.open_percentage)}%")
+        # 更新百分比显示（使用富文本，数值32px，百分号20px）
+        value = int(self.open_percentage)
+        self.percent_label.setText(
+            f'<span style="font-size: 32px; font-weight: bold; font-family: Roboto Mono;">{value}</span>'
+            f'<span style="font-size: 20px; font-weight: normal; font-family: Roboto Mono;">%</span>'
+        )
         
         # 更新样式
         self.update_status_buttons()
@@ -121,7 +128,7 @@ class IndicatorValve(QFrame):
         self.btn_stop.setStyleSheet(self.get_button_style(is_stop_active, colors))
         self.btn_open.setStyleSheet(self.get_button_style(is_open_active, colors))
     
-    # 6. 获取按钮样式（主按钮样式，深色主题使用灰白色文字，边框在深色模式下更明显）
+    # 6. 获取按钮样式（主按钮样式，取消圆角和padding，完全贴边）
     def get_button_style(self, is_active: bool, colors) -> str:
         if is_active:
             # 激活状态：主按钮样式
@@ -130,8 +137,8 @@ class IndicatorValve(QFrame):
                     background: {colors.GLOW_PRIMARY};
                     color: {colors.TEXT_INVERSE};
                     border: 1px solid {colors.GLOW_PRIMARY};
-                    border-radius: 4px;
-                    padding: 8px 0px;
+                    border-radius: 0px;
+                    padding: 0px;
                     font-weight: bold;
                 }}
             """
@@ -145,8 +152,8 @@ class IndicatorValve(QFrame):
                     background: transparent;
                     color: {text_color};
                     border: 1px solid {border_color};
-                    border-radius: 4px;
-                    padding: 8px 0px;
+                    border-radius: 0px;
+                    padding: 0px;
                     font-weight: normal;
                 }}
             """
@@ -208,7 +215,8 @@ class GaugeWidget(QWidget):
         super().__init__(parent)
         self.indicator = parent
         self.theme_manager = ThemeManager.instance()
-        self.setMinimumHeight(120)
+        # 移除固定最小高度，让仪表盘自适应布局
+        # self.setMinimumHeight(120)
     
     # 2. 绘制仪表盘
     def paintEvent(self, event):
@@ -346,11 +354,25 @@ class WidgetValveGrid(QWidget):
         super().__init__(parent)
         self.valve_indicators = []
         self.init_ui()
+        
+        # 设置 sizePolicy 为 Expanding，让 stretch 生效
+        from PyQt6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    
+    # 2. 重写 sizeHint，返回一个小值，让 stretch 生效
+    def sizeHint(self):
+        from PyQt6.QtCore import QSize
+        return QSize(400, 100)  # 返回一个小的高度值
+    
+    # 3. 重写 minimumSizeHint，返回一个小值
+    def minimumSizeHint(self):
+        from PyQt6.QtCore import QSize
+        return QSize(400, 100)  # 返回一个小的高度值
     
     # 2. 初始化 UI
     def init_ui(self):
         layout = QGridLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 0, 0, 0)  # 取消外边距
         layout.setSpacing(6)  # 减少2px：从8px改为6px
         
         # 创建4个蝶阀指示器（2x2网格）

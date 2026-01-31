@@ -47,8 +47,8 @@ class DarkColors:
     STATUS_NORMAL = '#00ff88'    # 正常状态（绿色）
     STATUS_SUCCESS = '#00ff88'   # 成功状态
     STATUS_WARNING = '#ffcc00'   # 警告状态（黄色）
-    STATUS_ALARM = '#ff3b30'     # 报警状态（红色）
-    STATUS_ERROR = '#ff3b30'     # 错误状态
+    STATUS_ALARM = '#ff0000'     # 报警状态（鲜红色）⭐
+    STATUS_ERROR = '#ff0000'     # 错误状态（鲜红色）⭐
     STATUS_INFO = '#0088ff'      # 信息状态（蓝色）
     STATUS_OFFLINE = '#484f58'   # 离线状态（灰色）
     STATUS_DISABLED = '#3d444d'  # 禁用状态
@@ -195,8 +195,8 @@ class LightColors:
     STATUS_NORMAL = '#008b67'    # 正常状态（绿色）
     STATUS_SUCCESS = '#008b67'   # 成功状态
     STATUS_WARNING = '#d5a339'   # 警告状态（金棕）
-    STATUS_ALARM = '#b95d3b'     # 报警状态（棕红）
-    STATUS_ERROR = '#b95d3b'     # 错误状态
+    STATUS_ALARM = '#ff0000'     # 报警状态（鲜红色）⭐
+    STATUS_ERROR = '#ff0000'     # 错误状态（鲜红色）⭐
     STATUS_INFO = '#00ced4'      # 信息状态（青蓝）
     STATUS_OFFLINE = '#8b949e'   # 离线状态（灰色）
     STATUS_DISABLED = '#acac9a'  # 禁用状态

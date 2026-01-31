@@ -38,19 +38,20 @@ class ChartElectrode(QWidget):
     # 2. 初始化 UI
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(4, 4, 4, 4)
-        main_layout.setSpacing(4)
+        main_layout.setContentsMargins(8, 0, 8, 2)  # 左右8px，上0px（减小顶部距离），下2px
+        main_layout.setSpacing(2)  # 紧凑间距2px
         
         # 顶部：标题和图例
         top_layout = QHBoxLayout()
+        top_layout.setContentsMargins(15, 0, 0, 0)  # 标题左边距15px（从30px减小到15px，对齐Y轴）
         
-        # 标题：弧流(KA) - 左移20px（通过左边距实现）
+        # 标题：弧流(KA)
         title_label = QLabel("弧流(KA)")
         title_label.setObjectName("chartTitle")
         font = QFont("Microsoft YaHei", 14)  # 字号从18减小到14
         font.setBold(True)
         title_label.setFont(font)
-        title_label.setContentsMargins(30, 0, 0, 0)  # 左边距30px（相对于Y轴左移20px）
+        title_label.setContentsMargins(0, 0, 0, 0)
         top_layout.addWidget(title_label)
         
         top_layout.addStretch()
@@ -73,13 +74,13 @@ class ChartElectrode(QWidget):
         legend.setObjectName("legend")
         
         layout = QHBoxLayout(legend)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(12)
+        layout.setContentsMargins(4, 2, 4, 2)  # 减小边距
+        layout.setSpacing(10)  # 减小间距
         
         # 死区显示
         deadzone_label = QLabel(f"死区: {int(self.deadzone_percent)}%")
         deadzone_label.setObjectName("deadzoneLabel")
-        font = QFont("Microsoft YaHei", 14)
+        font = QFont("Microsoft YaHei", 14)  # 字号从12改为14
         deadzone_label.setFont(font)
         layout.addWidget(deadzone_label)
         
@@ -98,18 +99,18 @@ class ChartElectrode(QWidget):
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(4)  # 减小间距
         
         # 文字
         label = QLabel(text)
         label.setObjectName(f"legendLabel_{item_type}")
-        font = QFont("Microsoft YaHei", 14)
+        font = QFont("Microsoft YaHei", 14)  # 字号从12改为14
         label.setFont(font)
         layout.addWidget(label)
         
         # 颜色块
         color_box = QFrame()
-        color_box.setFixedSize(16, 12)
+        color_box.setFixedSize(14, 10)  # 减小尺寸
         color_box.setObjectName(f"legendBox_{item_type}")
         layout.addWidget(color_box)
         
@@ -227,7 +228,8 @@ class ChartWidget(QWidget):
         super().__init__(parent)
         self.chart = parent
         self.theme_manager = ThemeManager.instance()
-        self.setMinimumHeight(250)
+        # 移除最小高度限制，让 stretch 参数生效
+        # self.setMinimumHeight(250)
     
     # 2. 绘制图表
     def paintEvent(self, event):
@@ -240,14 +242,14 @@ class ChartWidget(QWidget):
         min_value = 0
         max_value = 8000  # 8KA = 8000A
         
-        # 绘制区域
-        y_axis_width = 50  # Y轴刻度宽度（从70减小到50，减少左边距）
-        x_axis_height = 40  # X轴高度
+        # 绘制区域（紧凑布局，Y轴12px，X轴标签高度18px）
+        y_axis_width = 12  # Y轴刻度宽度（从25px减小到12px）
+        x_axis_height = 18  # X轴高度（改为18px）
         chart_rect = QRectF(
-            y_axis_width, 
-            20, 
-            self.width() - y_axis_width - 20, 
-            self.height() - x_axis_height - 20
+            y_axis_width,  # 左边距12px（为Y轴刻度留空间）
+            5,  # 顶部边距5px（紧凑）
+            self.width() - y_axis_width - 10,  # 右边距10px（紧凑）
+            self.height() - x_axis_height - 5  # 底部留18px给X轴标签
         )
         
         # 绘制Y轴和X轴
@@ -308,7 +310,7 @@ class ChartWidget(QWidget):
     # 4. 绘制Y轴刻度（1-8 KA）
     def draw_y_axis(self, painter: QPainter, min_value: float, max_value: float, width: int, chart_rect: QRectF, colors):
         painter.setPen(QColor(colors.TEXT_PRIMARY))
-        font = QFont("Microsoft YaHei", 12)
+        font = QFont("Microsoft YaHei", 11)  # 字号从12减小到11
         painter.setFont(font)
         
         # 9个刻度：0, 1, 2, 3, 4, 5, 6, 7, 8
@@ -327,11 +329,12 @@ class ChartWidget(QWidget):
                 int(y)
             )
             
-            # 绘制刻度值
+            # 绘制刻度值（在Y轴左侧）
             painter.setPen(QColor(colors.TEXT_PRIMARY))
             text = f"{value}"
+            # 刻度值绘制区域：从左边缘到Y轴左侧（Y轴左移后空间更小）
             painter.drawText(
-                QRectF(0, y - 10, width - 10, 20), 
+                QRectF(0, y - 10, chart_rect.left() - 5, 20), 
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, 
                 text
             )
@@ -476,7 +479,7 @@ class ChartWidget(QWidget):
     # 8. 绘制X轴标签
     def draw_x_labels(self, painter: QPainter, chart_rect: QRectF, colors):
         painter.setPen(QColor(colors.TEXT_PRIMARY))
-        font = QFont("Microsoft YaHei", 14)
+        font = QFont("Microsoft YaHei", 11)  # 紧凑字号11
         font.setBold(True)
         painter.setFont(font)
         
@@ -486,8 +489,12 @@ class ChartWidget(QWidget):
         
         group_width = chart_rect.width() / electrode_count
         
-        for i, electrode in enumerate(self.chart.electrodes):
+        # X轴标签文字：1#电极、2#电极、3#电极
+        labels = ["1#电极", "2#电极", "3#电极"]
+        
+        for i in range(min(electrode_count, len(labels))):
             group_center_x = chart_rect.left() + group_width * (i + 0.5)
-            label_rect = QRectF(group_center_x - 60, chart_rect.bottom() + 5, 120, 30)
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, electrode.name)
+            # X轴标签位置：紧贴X轴下方，高度18px
+            label_rect = QRectF(group_center_x - 60, chart_rect.bottom() + 2, 120, 18)
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter, labels[i])
 

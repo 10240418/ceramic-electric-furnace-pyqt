@@ -14,7 +14,7 @@ class CardPowerEnergy(QFrame):
         super().__init__(parent)
         self.theme_manager = ThemeManager.instance()
         self.setObjectName("powerEnergyCard")
-        self.setFixedSize(180, 140)
+        self.setFixedSize(180, 112)
         
         # 确保背景完全不透明
         self.setAutoFillBackground(True)
@@ -31,11 +31,11 @@ class CardPowerEnergy(QFrame):
     # 2. 初始化 UI
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(8)
         
         # 标题（居中）
-        self.title_label = QLabel("⚡ 功率能耗")
+        self.title_label = QLabel("功率能耗")
         self.title_label.setObjectName("powerEnergyTitle")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.title_label)
@@ -51,9 +51,6 @@ class CardPowerEnergy(QFrame):
         self.energy_label.setObjectName("energy_label")
         self.energy_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.energy_label)
-        
-        # 添加弹性空间
-        layout.addStretch()
     
     # 3. 更新数据
     def update_data(self, power_kw: float, energy_kwh: float):
@@ -80,19 +77,19 @@ class CardPowerEnergy(QFrame):
             
             QLabel#powerEnergyTitle {{
                 color: {colors.GLOW_PRIMARY};
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
             }}
             
             QLabel#power_label {{
                 color: {colors.GLOW_ORANGE};
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: bold;
             }}
             
             QLabel#energy_label {{
                 color: {colors.GLOW_YELLOW};
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: bold;
             }}
         """)

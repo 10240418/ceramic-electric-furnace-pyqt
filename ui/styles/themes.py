@@ -29,7 +29,7 @@ class ThemeManager(QObject):
             # 必须先调用 QObject.__init__
             QObject.__init__(instance)
             instance._initialized = False
-            instance._current_theme = Theme.DARK
+            instance._current_theme = Theme.LIGHT  # 默认使用浅色主题
             cls._instance = instance
         return cls._instance
     

@@ -26,7 +26,7 @@ class PanelTech(QFrame):
     # 2. 初始化 UI
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setContentsMargins(16, 16, 16, 16)  # 统一左右上下 16px
         main_layout.setSpacing(12)
         
         # 标题栏

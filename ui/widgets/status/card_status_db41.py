@@ -50,7 +50,7 @@ class CardStatusDb41(QFrame):
         layout.setSpacing(8)
         
         # 图标
-        icon_label = QLabel("📡")
+        icon_label = QLabel("")
         icon_label.setObjectName("header_icon")
         icon_label.setFont(QFont("Segoe UI Emoji", 16))
         layout.addWidget(icon_label)

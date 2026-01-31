@@ -1,14 +1,20 @@
 """
 3#电炉页面 - 使用组件化架构
 """
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMessageBox
 from PyQt6.QtCore import QTimer
+from datetime import datetime
 from ui.styles.themes import ThemeManager
 from ui.widgets.common.panel_tech import PanelTech
+from ui.widgets.common.chart_tech import ChartTech
 from ui.widgets.realtime_data.card_data import CardData, DataItem
 from ui.widgets.realtime_data.chart_electrode import ChartElectrode, ElectrodeData
 from ui.widgets.realtime_data.butterfly_vaue import WidgetValveGrid
 from ui.widgets.realtime_data import PanelFurnaceBg
+from ui.widgets.realtime_data.panel_furnace.dialog_batch_config import DialogBatchConfig
+from backend.services.batch_service import get_batch_service
+from backend.bridge.data_cache import get_data_cache
+from loguru import logger
 
 
 class PageElec3(QWidget):
@@ -19,11 +25,16 @@ class PageElec3(QWidget):
         super().__init__(parent)
         self.theme_manager = ThemeManager.instance()
         
+        # 获取后端服务
+        self.batch_service = get_batch_service()
+        self.data_cache = get_data_cache()
+        
         # 模拟数据
         self.mock_data = {
-            'batch_no': '03260128',
-            'start_time': '2026-01-28 08:30:00',
-            'run_duration': '02:15:30',
+            'batch_no': '',
+            'start_time': '',
+            'run_duration': '00:00:00',
+            'is_smelting': False,
             'electrodes': [
                 {'depth_mm': -150.0, 'current_a': 2989.0, 'voltage_v': 145.0},
                 {'depth_mm': -150.0, 'current_a': 3050.0, 'voltage_v': 148.0},
@@ -48,6 +59,7 @@ class PageElec3(QWidget):
             'hopper': {
                 'weight': 1250.0,
                 'feeding_total': 3580.0,
+                'upper_limit': 5000.0,
             },
             'power': 1850.5,      # 总功率 kW
             'energy': 12580.3,    # 总能耗 kWh
@@ -59,10 +71,13 @@ class PageElec3(QWidget):
         # 监听主题变化
         self.theme_manager.theme_changed.connect(self.on_theme_changed)
         
-        # 启动数据更新定时器（模拟数据变化）
+        # 启动数据更新定时器（0.5s 刷新一次）
         self.update_timer = QTimer()
-        self.update_timer.timeout.connect(self.update_mock_data)
-        self.update_timer.start(500)
+        self.update_timer.timeout.connect(self.update_realtime_data)
+        self.update_timer.start(500)  # 500ms = 0.5s
+        
+        # 初始化批次状态（只在启动时更新一次）
+        self.update_batch_status()
     
     # 2. 初始化 UI
     def init_ui(self):
@@ -70,7 +85,7 @@ class PageElec3(QWidget):
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(8)
         
-        # 上部分 70%
+        # 上部分 74%
         top_widget = QWidget()
         top_layout = QHBoxLayout(top_widget)
         top_layout.setContentsMargins(0, 0, 0, 0)
@@ -82,31 +97,61 @@ class PageElec3(QWidget):
         
         # 右侧 60% (电炉背景面板组件)
         self.furnace_panel = PanelFurnaceBg()
-        self.furnace_panel.batch_info_bar.stop_clicked.connect(self.on_stop_smelting)
-        self.furnace_panel.batch_info_bar.finish_clicked.connect(self.on_finish_smelting)
+        self.furnace_panel.batch_info_bar.start_smelting_clicked.connect(self.on_start_smelting)
+        self.furnace_panel.batch_info_bar.abandon_batch_clicked.connect(self.on_abandon_batch)
+        self.furnace_panel.batch_info_bar.terminate_smelting_clicked.connect(self.on_terminate_smelting)
         top_layout.addWidget(self.furnace_panel, stretch=60)
         
-        main_layout.addWidget(top_widget, stretch=70)
+        main_layout.addWidget(top_widget, stretch=74)
         
-        # 下部分 30%
+        # 下部分 26%
         bottom_widget = QWidget()
         bottom_layout = QHBoxLayout(bottom_widget)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(8)
         
-        # 料仓模块 42%
+        # 料仓模块 40%（和上方左侧对齐）
         self.create_hopper_panel()
-        bottom_layout.addWidget(self.hopper_panel, stretch=42)
+        bottom_layout.addWidget(self.hopper_panel, stretch=40)
         
-        # 炉盖模块 29%
+        # 炉盖/炉皮冷却水容器 60%（和上方右侧对齐）
+        cooling_container = QWidget()
+        cooling_layout = QHBoxLayout(cooling_container)
+        cooling_layout.setContentsMargins(0, 0, 0, 0)
+        cooling_layout.setSpacing(8)
+        
+        # 炉盖模块 50%
         self.create_cooling_cover_panel()
-        bottom_layout.addWidget(self.cooling_cover_panel, stretch=29)
+        cooling_layout.addWidget(self.cooling_cover_panel, stretch=50)
         
-        # 炉皮模块 29%
+        # 炉皮模块 50%
         self.create_cooling_shell_panel()
-        bottom_layout.addWidget(self.cooling_shell_panel, stretch=29)
+        cooling_layout.addWidget(self.cooling_shell_panel, stretch=50)
         
-        main_layout.addWidget(bottom_widget, stretch=30)
+        bottom_layout.addWidget(cooling_container, stretch=60)
+        
+        main_layout.addWidget(bottom_widget, stretch=26)
+        
+        # 激活主布局，让上下部分的 stretch 生效
+        main_layout.activate()
+        
+        # 设置 SizePolicy 让 stretch 生效
+        from PyQt6.QtWidgets import QSizePolicy
+        top_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        bottom_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
+        # 调试：延迟打印实际高度
+        from PyQt6.QtCore import QTimer
+        def print_heights():
+            logger.info(f"=== 布局调试信息 ===")
+            logger.info(f"页面总高度: {self.height()}")
+            logger.info(f"上部分高度: {top_widget.height()} (应该是 84%)")
+            logger.info(f"下部分高度: {bottom_widget.height()} (应该是 26%)")
+            logger.info(f"上部分实际比例: {top_widget.height() / self.height() * 100:.1f}%")
+            logger.info(f"下部分实际比例: {bottom_widget.height() / self.height() * 100:.1f}%")
+            logger.info(f"左侧蝶阀高度: {self.valve_grid.height()}")
+            logger.info(f"左侧弧流高度: {self.chart_panel.height()}")
+        QTimer.singleShot(1000, print_heights)  # 1秒后打印
     
     # 3. 创建左侧面板
     def create_left_panel(self):
@@ -115,17 +160,24 @@ class PageElec3(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
         
-        # 上半部分：蝶阀网格组件
+        # 上半部分：蝶阀网格组件 58%
         self.valve_grid = WidgetValveGrid()
-        left_layout.addWidget(self.valve_grid, stretch=50)
+        # 设置 sizePolicy 为 Expanding，让 stretch 生效
+        from PyQt6.QtWidgets import QSizePolicy
+        self.valve_grid.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        left_layout.addWidget(self.valve_grid, stretch=58)
         
-        # 下半部分：弧流柱状图
+        # 下半部分：弧流柱状图 42%
         self.create_electrode_chart()
-        left_layout.addWidget(self.chart_panel, stretch=50)
+        self.chart_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        left_layout.addWidget(self.chart_panel, stretch=42)
+        
+        # 激活布局，让 stretch 生效
+        left_layout.activate()
     
     # 4. 创建电极电流图表
     def create_electrode_chart(self):
-        self.chart_panel = PanelTech("")  # 移除"弧流柱状图"标题
+        self.chart_panel = ChartTech()  # 使用图表专用组件，内边距为0
         
         # 创建电极电流图表 (固定Y轴0-8 KA)
         self.electrode_chart = ChartElectrode()
@@ -139,7 +191,20 @@ class PageElec3(QWidget):
     def create_hopper_panel(self):
         self.hopper_panel = PanelTech("料仓")
         
+        # 使用 CardData 显示4行数据
         items = [
+            DataItem(
+                label="投料状态",
+                value="未投料",
+                unit="",
+                icon="📊"
+            ),
+            DataItem(
+                label="料仓上限",
+                value="5000",
+                unit="kg",
+                icon="⬆️"
+            ),
             DataItem(
                 label="料仓重量",
                 value="1250",
@@ -147,17 +212,17 @@ class PageElec3(QWidget):
                 icon="⚖️"
             ),
             DataItem(
-                label="投料重量",
+                label="投料累计",
                 value="3580",
                 unit="kg",
                 icon="⬇️"
             ),
         ]
         
-        card = CardData(items)
+        self.hopper_card = CardData(items)
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(card)
+        layout.addWidget(self.hopper_card)
         self.hopper_panel.set_content_layout(layout)
     
     # 6. 创建炉皮冷却水面板
@@ -191,11 +256,17 @@ class PageElec3(QWidget):
         layout.addWidget(card)
         self.cooling_shell_panel.set_content_layout(layout)
     
-    # 7. 创建炉盖冷却水面板
+    # 7. 创建炉盖冷却水面板（添加过滤器压差）
     def create_cooling_cover_panel(self):
         self.cooling_cover_panel = PanelTech("炉盖冷却水")
         
         items = [
+            DataItem(
+                label="过滤器压差",
+                value="0.0",
+                unit="kPa",
+                icon="🔧"
+            ),
             DataItem(
                 label="冷却水流速",
                 value="2.80",
@@ -236,28 +307,242 @@ class PageElec3(QWidget):
     def on_theme_changed(self):
         self.apply_styles()
     
-    # 10. 更新模拟数据
-    def update_mock_data(self):
-        import random
+    # 10. 更新实时数据（每 0.5s 刷新一次）
+    def update_realtime_data(self):
+        """
+        每 0.5s 刷新一次的数据：
+        1. 蝶阀开度和状态
+        2. 三相电极电流、电压
+        3. 电极深度
+        4. 冷却水流量、水压、累计流量
+        5. 过滤器压差
+        6. 料仓重量、投料累计
+        7. 功率、能耗
+        """
+        try:
+            # 从 DataCache 读取实时数据
+            sensor_data = self.data_cache.get_sensor_data()
+            arc_data = self.data_cache.get_arc_data()
+            
+            # ========================================
+            # 1. 更新蝶阀开度和状态（每 0.5s）
+            # ========================================
+            if sensor_data and 'valve_openness' in sensor_data:
+                valve_openness = sensor_data['valve_openness']
+                valve_status = sensor_data.get('valve_status', {})
+                valve_status_byte = valve_status.get('raw_byte', 0)
+                
+                valves_data = []
+                for valve_id in range(1, 5):
+                    # 解析状态
+                    bit_offset = (valve_id - 1) * 2
+                    bit_close = (valve_status_byte >> bit_offset) & 0x01
+                    bit_open = (valve_status_byte >> (bit_offset + 1)) & 0x01
+                    status = f"{bit_close}{bit_open}"
+                    
+                    # 获取开度
+                    openness = valve_openness.get(valve_id, 0.0)
+                    
+                    valves_data.append({
+                        'status': status,
+                        'open_percent': openness
+                    })
+                
+                # 批量更新蝶阀
+                self.valve_grid.update_all_valves(valves_data)
+            
+            # ========================================
+            # 2. 更新三相电极电流、电压（每 0.5s）
+            # ========================================
+            if arc_data:
+                arc_current = arc_data.get('arc_current', {})
+                arc_voltage = arc_data.get('arc_voltage', {})
+                setpoints = arc_data.get('setpoints', {})
+                
+                # 更新电极数据
+                electrodes = []
+                for phase in ['U', 'V', 'W']:
+                    current = arc_current.get(phase, 0.0)
+                    voltage = arc_voltage.get(phase, 0.0)
+                    setpoint = setpoints.get(phase, 0.0)
+                    
+                    # 更新电极卡片（电流、电压）
+                    phase_idx = ['U', 'V', 'W'].index(phase)
+                    self.mock_data['electrodes'][phase_idx]['current_a'] = current
+                    self.mock_data['electrodes'][phase_idx]['voltage_v'] = voltage
+                    
+                    # 添加到电极图表数据
+                    electrodes.append(ElectrodeData(
+                        f"{phase}相",
+                        setpoint,  # 设定值
+                        current    # 实际值
+                    ))
+                
+                # 更新电极电流图表
+                deadzone = arc_data.get('manual_deadzone_percent', 15.0)
+                self.electrode_chart.update_data(electrodes, deadzone)
+            
+            # ========================================
+            # 3. 更新电极深度（每 0.5s）
+            # ========================================
+            if sensor_data and 'electrode_depths' in sensor_data:
+                electrode_depths = sensor_data['electrode_depths']
+                for i, (key, data) in enumerate(electrode_depths.items()):
+                    if isinstance(data, dict):
+                        depth_mm = data.get('distance_mm', 0.0)
+                        self.mock_data['electrodes'][i]['depth_mm'] = depth_mm
+            
+            # 批量更新电极卡片
+            self.furnace_panel.update_all_electrodes(self.mock_data['electrodes'])
+            
+            # ========================================
+            # 4. 更新冷却水数据（每 0.5s）
+            # ========================================
+            if sensor_data and 'cooling' in sensor_data:
+                cooling = sensor_data['cooling']
+                flows = cooling.get('flows', {})
+                pressures = cooling.get('pressures', {})
+                pressure_diff = cooling.get('pressure_diff', {})
+                cover_total = cooling.get('cover_total', 0.0)
+                shell_total = cooling.get('shell_total', 0.0)
+                
+                # 更新炉皮冷却水
+                flow_1 = flows.get('WATER_FLOW_1', {})
+                press_1 = pressures.get('WATER_PRESS_1', {})
+                self.mock_data['cooling_shell']['flow'] = flow_1.get('flow', 0.0) if isinstance(flow_1, dict) else 0.0
+                self.mock_data['cooling_shell']['pressure'] = press_1.get('pressure', 0.0) if isinstance(press_1, dict) else 0.0
+                self.mock_data['cooling_shell']['total'] = shell_total
+                
+                # 更新炉盖冷却水
+                flow_2 = flows.get('WATER_FLOW_2', {})
+                press_2 = pressures.get('WATER_PRESS_2', {})
+                self.mock_data['cooling_cover']['flow'] = flow_2.get('flow', 0.0) if isinstance(flow_2, dict) else 0.0
+                self.mock_data['cooling_cover']['pressure'] = press_2.get('pressure', 0.0) if isinstance(press_2, dict) else 0.0
+                self.mock_data['cooling_cover']['total'] = cover_total
+                
+                # 过滤器压差
+                filter_diff = pressure_diff.get('value', 0.0) if isinstance(pressure_diff, dict) else 0.0
+                
+                # 更新炉皮冷却水卡片
+                shell_items = [
+                    DataItem(
+                        label="冷却水流速",
+                        value=f"{self.mock_data['cooling_shell']['flow']:.2f}",
+                        unit="m³/h",
+                        icon="💧"
+                    ),
+                    DataItem(
+                        label="冷却水水压",
+                        value=f"{self.mock_data['cooling_shell']['pressure']:.1f}",
+                        unit="kPa",
+                        icon="💦"
+                    ),
+                    DataItem(
+                        label="冷却水用量",
+                        value=f"{self.mock_data['cooling_shell']['total']:.2f}",
+                        unit="m³",
+                        icon="🌊"
+                    ),
+                ]
+                self.cooling_shell_panel.findChild(CardData).update_items(shell_items)
+                
+                # 更新炉盖冷却水卡片（添加过滤器压差）
+                cover_items = [
+                    DataItem(
+                        label="过滤器压差",
+                        value=f"{filter_diff:.1f}",
+                        unit="kPa",
+                        icon="🔧"
+                    ),
+                    DataItem(
+                        label="冷却水流速",
+                        value=f"{self.mock_data['cooling_cover']['flow']:.2f}",
+                        unit="m³/h",
+                        icon="💧"
+                    ),
+                    DataItem(
+                        label="冷却水水压",
+                        value=f"{self.mock_data['cooling_cover']['pressure']:.1f}",
+                        unit="kPa",
+                        icon="💦"
+                    ),
+                    DataItem(
+                        label="冷却水用量",
+                        value=f"{self.mock_data['cooling_cover']['total']:.2f}",
+                        unit="m³",
+                        icon="🌊"
+                    ),
+                ]
+                self.cooling_cover_panel.findChild(CardData).update_items(cover_items)
+            
+            # ========================================
+            # 5. 更新料仓数据（每 0.5s）
+            # ========================================
+            if sensor_data and 'hopper' in sensor_data:
+                hopper = sensor_data['hopper']
+                self.mock_data['hopper']['weight'] = hopper.get('weight', 0.0)
+                self.mock_data['hopper']['feeding_total'] = hopper.get('feeding_total', 0.0)
+                is_discharging = hopper.get('is_discharging', False)
+                
+                hopper_items = [
+                    DataItem(
+                        label="投料状态",
+                        value="投料中" if is_discharging else "未投料",
+                        unit="",
+                        icon="📊"
+                    ),
+                    DataItem(
+                        label="料仓上限",
+                        value=f"{int(self.mock_data['hopper']['upper_limit'])}",
+                        unit="kg",
+                        icon="⬆️"
+                    ),
+                    DataItem(
+                        label="料仓重量",
+                        value=f"{int(self.mock_data['hopper']['weight'])}",
+                        unit="kg",
+                        icon="⚖️"
+                    ),
+                    DataItem(
+                        label="投料累计",
+                        value=f"{int(self.mock_data['hopper']['feeding_total'])}",
+                        unit="kg",
+                        icon="⬇️"
+                    ),
+                ]
+                self.hopper_card.update_items(hopper_items)
+            
+            # ========================================
+            # 6. 更新功率能耗（每 0.5s）
+            # ========================================
+            if arc_data:
+                power_total = arc_data.get('power_total', 0.0)
+                self.mock_data['power'] = power_total
+                
+                # 从缓存读取能耗（能耗每15秒计算一次）
+                # TODO: 需要后端提供能耗数据接口
+                
+                self.furnace_panel.update_power_energy(
+                    self.mock_data['power'],
+                    self.mock_data['energy']
+                )
+            
+        except Exception as e:
+            logger.error(f"更新实时数据异常: {e}", exc_info=True)
         
-        # 更新蝶阀数据
-        for i, valve_data in enumerate(self.mock_data['valves']):
-            valve_data['open_percent'] += random.uniform(-5, 5)
-            valve_data['open_percent'] = max(0, min(100, valve_data['open_percent']))
-        
-        # 批量更新蝶阀
-        self.valve_grid.update_all_valves(self.mock_data['valves'])
-        
-        # 更新电极数据
-        for i in range(3):
-            data = self.mock_data['electrodes'][i]
-            data['current_a'] += random.uniform(-50, 50)
-            data['current_a'] = max(0, min(8000, data['current_a']))
-        
-        # 更新功率能耗（模拟变化）
-        self.mock_data['power'] += random.uniform(-50, 50)
-        self.mock_data['power'] = max(1000, min(3000, self.mock_data['power']))
-        self.mock_data['energy'] += random.uniform(0, 1)
+        # ========================================
+        # 7. 更新批次运行时长（每 0.5s）
+        # ========================================
+        if self.mock_data['is_smelting']:
+            try:
+                status = self.batch_service.get_status()
+                elapsed_seconds = status['elapsed_seconds']
+                hours = int(elapsed_seconds // 3600)
+                minutes = int((elapsed_seconds % 3600) // 60)
+                seconds = int(elapsed_seconds % 60)
+                self.mock_data['run_duration'] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            except:
+                pass
         
         # 更新炉次信息
         self.furnace_panel.update_batch_info(
@@ -265,34 +550,133 @@ class PageElec3(QWidget):
             self.mock_data['start_time'],
             self.mock_data['run_duration']
         )
+    
+    # 11. 开始冶炼（显示批次配置对话框）
+    def on_start_smelting(self):
+        """点击开始冶炼按钮，弹出批次配置对话框"""
+        logger.info("点击开始冶炼按钮")
         
-        # 批量更新电极卡片
-        self.furnace_panel.update_all_electrodes(self.mock_data['electrodes'])
+        # 创建批次配置对话框
+        dialog = DialogBatchConfig(furnace_number=3, parent=self)
+        dialog.batch_confirmed.connect(self.on_batch_confirmed)
+        dialog.exec()
+    
+    # 12. 批次配置确认
+    def on_batch_confirmed(self, batch_code: str):
+        """批次配置确认后，调用后端服务开始冶炼"""
+        logger.info(f"批次配置确认: {batch_code}")
         
-        # 更新功率能耗
-        self.furnace_panel.update_power_energy(
-            self.mock_data['power'],
-            self.mock_data['energy']
+        try:
+            # 调用后端服务开始冶炼
+            result = self.batch_service.start(batch_code)
+            
+            if result['success']:
+                logger.info(f"冶炼开始成功: {result['message']}")
+                
+                # 切换 DB1 轮询速度到高速模式 (0.5s)
+                from backend.services.polling_loops_v2 import switch_db1_speed
+                switch_db1_speed(high_speed=True)
+                logger.info("已切换 DB1 轮询到高速模式 (0.5s)")
+                
+                QMessageBox.information(self, "成功", result['message'])
+                
+                # 立即更新批次状态
+                self.update_batch_status()
+            else:
+                logger.warning(f"冶炼开始失败: {result['message']}")
+                QMessageBox.warning(self, "失败", result['message'])
+        
+        except Exception as e:
+            logger.error(f"开始冶炼异常: {e}", exc_info=True)
+            QMessageBox.critical(self, "错误", f"开始冶炼失败: {e}")
+    
+    # 13. 放弃炉次（暂不实现）
+    def on_abandon_batch(self):
+        """放弃炉次（暂不实现）"""
+        logger.info("点击放弃炉次按钮（暂不实现）")
+        QMessageBox.information(self, "提示", "放弃炉次功能暂未实现")
+    
+    # 14. 终止冶炼（长按3秒触发）
+    def on_terminate_smelting(self):
+        """终止冶炼（长按3秒后触发）"""
+        logger.info("长按3秒，触发终止冶炼")
+        
+        # 二次确认
+        reply = QMessageBox.question(
+            self,
+            "确认终止",
+            "确定要终止当前冶炼吗？\n这将结束当前批次。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
         )
         
-        # 更新电极电流图表（设定值设置为实际值的85%-95%之间）
-        electrodes = []
-        for i in range(3):
-            data = self.mock_data['electrodes'][i]
-            # 设定值为实际值的85%-95%
-            set_value = data['current_a'] * random.uniform(0.85, 0.95)
-            electrodes.append(ElectrodeData(
-                f"{i+1}#电极",
-                set_value,  # 设定值
-                data['current_a']  # 实际值
-            ))
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                # 调用后端服务停止冶炼
+                result = self.batch_service.stop()
+                
+                if result['success']:
+                    logger.info(f"冶炼终止成功: {result['message']}")
+                    
+                    # 切换 DB1 轮询速度回低速模式 (5s)
+                    from backend.services.polling_loops_v2 import switch_db1_speed
+                    switch_db1_speed(high_speed=False)
+                    logger.info("已切换 DB1 轮询到低速模式 (5s)")
+                    
+                    QMessageBox.information(self, "成功", result['message'])
+                    
+                    # 立即更新批次状态
+                    self.update_batch_status()
+                else:
+                    logger.warning(f"冶炼终止失败: {result['message']}")
+                    QMessageBox.warning(self, "失败", result['message'])
+            
+            except Exception as e:
+                logger.error(f"终止冶炼异常: {e}", exc_info=True)
+                QMessageBox.critical(self, "错误", f"终止冶炼失败: {e}")
+    
+    # 15. 更新批次状态（从后端服务读取）
+    def update_batch_status(self):
+        """从后端服务读取批次状态并更新UI"""
+        try:
+            status = self.batch_service.get_status()
+            
+            is_smelting = status['is_smelting']
+            batch_code = status['batch_code'] or ''
+            start_time_str = status['start_time'] or ''
+            elapsed_seconds = status['elapsed_seconds']
+            
+            # 格式化开始时间（只显示时分秒）
+            if start_time_str:
+                try:
+                    start_dt = datetime.fromisoformat(start_time_str)
+                    start_time_display = start_dt.strftime('%H:%M:%S')
+                except:
+                    start_time_display = start_time_str
+            else:
+                start_time_display = ''
+            
+            # 格式化运行时长
+            hours = int(elapsed_seconds // 3600)
+            minutes = int((elapsed_seconds % 3600) // 60)
+            seconds = int(elapsed_seconds % 60)
+            run_duration = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            
+            # 更新 UI
+            self.furnace_panel.batch_info_bar.set_smelting_state(
+                is_smelting=is_smelting,
+                batch_no=batch_code,
+                start_time=start_time_display,
+                run_duration=run_duration
+            )
+            
+            # 更新模拟数据
+            self.mock_data['is_smelting'] = is_smelting
+            self.mock_data['batch_no'] = batch_code
+            self.mock_data['start_time'] = start_time_display
+            self.mock_data['run_duration'] = run_duration
         
-        self.electrode_chart.update_data(electrodes, 15.0)
+        except Exception as e:
+            logger.error(f"更新批次状态异常: {e}", exc_info=True)
     
-    # 11. 中止冶炼
-    def on_stop_smelting(self):
-        print("中止冶炼")
-    
-    # 12. 结束冶炼
-    def on_finish_smelting(self):
-        print("结束冶炼")
+

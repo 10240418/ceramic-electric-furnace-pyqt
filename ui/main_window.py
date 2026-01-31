@@ -4,10 +4,12 @@
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QStackedWidget, QPushButton, QLabel, QFrame
+    QStackedWidget, QPushButton, QLabel, QFrame, QMessageBox, QApplication, QDialog
 )
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QKeySequence, QShortcut, QFont
+from PyQt6.QtGui import QKeySequence, QShortcut, QFont, QIcon
+from loguru import logger
+
 from ui.styles.themes import ThemeManager, Theme
 from ui.styles.qss_styles import QSSStyles
 from ui.widgets.bar.top_nav_bar import TopNavBar
@@ -15,22 +17,87 @@ from ui.pages.page_status import PageStatus
 from ui.pages.page_elec_3 import PageElec3
 from ui.pages.page_pump_hopper import PagePumpHopper
 from ui.pages.page_history_curve import PageHistoryCurve
+from ui.pages.page_settings import PageSettings
+
+# 导入后端服务管理器
+from backend.bridge.service_manager import ServiceManager
+from backend.bridge.data_bridge import get_data_bridge
+from backend.bridge.data_cache import get_data_cache
 
 
 class MainWindow(QMainWindow):
     """主窗口类"""
     
     # 1. 初始化主窗口
-    def __init__(self):
+    def __init__(self, use_mock: bool = True):
+        """
+        初始化主窗口
+        
+        Args:
+            use_mock: 是否使用 Mock 数据（默认 True，开发测试用）
+        """
         super().__init__()
+        
+        # 主题管理器
+        logger.info("初始化主题管理器...")
         self.theme_manager = ThemeManager.instance()
         self.qss_styles = QSSStyles(self.theme_manager)
+        logger.info("主题管理器初始化完成")
+        
+        # 后端服务管理器
+        logger.info("初始化后端服务管理器...")
+        self.service_manager = ServiceManager(use_mock=use_mock)
+        logger.info("后端服务管理器初始化完成")
+        
+        # 数据桥接器（用于接收后端数据）
+        logger.info("初始化数据桥接器...")
+        self.data_bridge = get_data_bridge()
+        logger.info("数据桥接器初始化完成")
+        
+        # 数据缓存（用于读取后端数据）
+        logger.info("初始化数据缓存...")
+        self.data_cache = get_data_cache()
+        logger.info("数据缓存初始化完成")
+        
+        # 连接后端信号
+        logger.info("连接后端信号...")
+        self.connect_backend_signals()
+        logger.info("后端信号连接完成")
         
         # 监听主题变化
+        logger.info("连接主题变化信号...")
         self.theme_manager.theme_changed.connect(self.on_theme_changed)
+        logger.info("主题变化信号连接完成")
         
+        # 初始化 UI
+        logger.info("初始化 UI...")
         self.init_ui()
+        logger.info("UI 初始化完成")
+        
+        logger.info("设置快捷键...")
         self.setup_shortcuts()
+        logger.info("快捷键设置完成")
+        
+        # 启动后端服务
+        logger.info("启动后端服务...")
+        self.service_manager.start_all()
+        logger.info("后端服务已启动")
+        
+    # 2. 连接后端信号
+    def connect_backend_signals(self):
+        """连接后端数据桥接器的信号"""
+        # 连接错误信号
+        self.data_bridge.error_occurred.connect(self.on_backend_error)
+        
+        # 可以在这里连接更多信号，例如：
+        # self.data_bridge.arc_data_updated.connect(self.on_arc_data_updated)
+        # self.data_bridge.sensor_data_updated.connect(self.on_sensor_data_updated)
+        
+    # 3. 处理后端错误
+    def on_backend_error(self, error_msg: str):
+        """处理后端错误"""
+        logger.error(f"后端错误: {error_msg}")
+        # 可以在这里显示错误提示给用户
         
     # 2. 初始化UI
     def init_ui(self):
@@ -39,8 +106,15 @@ class MainWindow(QMainWindow):
         # 隐藏系统标题栏，使用自定义工具栏
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         
-        # 设置窗口大小为 1280x1024
+        # 设置窗口大小为 19 寸 4:3 标准分辨率 (1280x1024)
         self.resize(1280, 1024)
+        
+        # 设置最小和最大尺寸，固定窗口大小
+        self.setMinimumSize(1280, 1024)
+        self.setMaximumSize(1280, 1024)
+        
+        # 窗口居中显示
+        self.center_window()
         
         # 应用全局样式
         self.apply_theme()
@@ -84,9 +158,9 @@ class MainWindow(QMainWindow):
         self.page_pump_hopper = PagePumpHopper()
         self.page_stack.addWidget(self.page_pump_hopper)
         
-        # 页面 4: 系统设置
-        page4 = self.create_page("系统设置", "⚙ 系统配置")
-        self.page_stack.addWidget(page4)
+        # 页面 4: 系统设置（实际页面）
+        self.page_settings = PageSettings()
+        self.page_stack.addWidget(self.page_settings)
     
     # 4. 创建单个页面（占位页面）
     def create_page(self, title: str, subtitle: str):
@@ -104,7 +178,7 @@ class MainWindow(QMainWindow):
         
         # 页面说明
         info_label = QLabel(
-            f"✅ {title}页面已创建\n\n"
+            f" {title}页面已创建\n\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             "这是一个占位页面\n"
             "后续将实现具体功能\n\n"
@@ -141,16 +215,32 @@ class MainWindow(QMainWindow):
     # 7. 切换全屏/窗口模式
     def toggle_fullscreen(self):
         if self.isFullScreen():
+            # 退出全屏，恢复固定大小
             self.showNormal()
+            self.setMinimumSize(1280, 1024)
+            self.setMaximumSize(1280, 1024)
+            self.center_window()
         else:
+            # 进入全屏，取消尺寸限制
+            self.setMinimumSize(0, 0)
+            self.setMaximumSize(16777215, 16777215)  # Qt 最大值
             self.showFullScreen()
     
-    # 8. 主题变化回调
+    # 8. 窗口居中
+    def center_window(self):
+        """将窗口居中显示在屏幕上"""
+        screen = QApplication.primaryScreen().geometry()
+        window_geometry = self.frameGeometry()
+        center_point = screen.center()
+        window_geometry.moveCenter(center_point)
+        self.move(window_geometry.topLeft())
+    
+    # 9. 主题变化回调
     def on_theme_changed(self, theme: Theme):
         # 重新应用样式
         self.apply_theme()
     
-    # 9. 应用主题样式
+    # 10. 应用主题样式
     def apply_theme(self):
         tm = self.theme_manager
         
@@ -202,16 +292,186 @@ class MainWindow(QMainWindow):
             }}
         """)
             
-    # 10. 添加页面到页面栈
+    # 11. 添加页面到页面栈
     def add_page(self, page: QWidget, name: str = ""):
         index = self.page_stack.addWidget(page)
         return index
         
-    # 11. 切换到指定页面
+    # 12. 切换到指定页面
     def switch_page(self, index: int):
         if 0 <= index < self.page_stack.count():
             self.page_stack.setCurrentIndex(index)
             
-    # 12. 获取当前页面索引
+    # 13. 获取当前页面索引
     def get_current_page_index(self):
         return self.page_stack.currentIndex()
+    
+    # 14. 关闭窗口事件（二次确认 + 停止后端服务）
+    def closeEvent(self, event):
+        """关闭窗口时二次确认并停止后端服务"""
+        logger.info("用户尝试关闭窗口...")
+        
+        # 1. 创建自定义大字体确认对话框
+        dialog = ConfirmExitDialog(self)
+        result = dialog.exec()
+        
+        # 2. 用户选择"否"，取消关闭
+        if result == QDialog.DialogCode.Rejected:
+            logger.info("用户取消关闭")
+            event.ignore()
+            return
+        
+        # 3. 用户选择"是"，开始关闭流程
+        logger.info("用户确认关闭，正在停止后端服务...")
+        
+        # 4. 停止后端服务
+        try:
+            self.service_manager.stop_all()
+            logger.info("后端服务已停止")
+        except Exception as e:
+            logger.error(f"停止后端服务失败: {e}")
+        
+        # 5. 接受关闭事件
+        event.accept()
+        logger.info("窗口已关闭")
+        
+        # 6. 完全退出应用（包括系统托盘）
+        QApplication.quit()
+        logger.info("应用已完全退出")
+
+
+class ConfirmExitDialog(QDialog):
+    """自定义退出确认对话框（大字体、大窗口）"""
+    
+    # 1. 初始化对话框
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.theme_manager = ThemeManager.instance()
+        self.init_ui()
+        self.apply_styles()
+    
+    # 2. 初始化 UI
+    def init_ui(self):
+        self.setWindowTitle("确认退出")
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
+        self.setModal(True)
+        
+        # 设置对话框大小（更大）
+        self.setFixedSize(600, 320)
+        
+        # 主布局
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(30, 30, 30, 30)
+        main_layout.setSpacing(30)
+        
+        # 标题
+        title_label = QLabel("确认退出")
+        title_label.setObjectName("dialogTitle")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        font_title = QFont("Microsoft YaHei", 28)
+        font_title.setBold(True)
+        title_label.setFont(font_title)
+        main_layout.addWidget(title_label)
+        
+        # 提示信息
+        message_label = QLabel("确定要退出程序吗？\n\n后端服务将会完全停止。")
+        message_label.setObjectName("dialogMessage")
+        message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message_label.setWordWrap(True)
+        font_message = QFont("Microsoft YaHei", 18)
+        message_label.setFont(font_message)
+        main_layout.addWidget(message_label)
+        
+        main_layout.addStretch()
+        
+        # 按钮布局
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(20)
+        
+        # 取消按钮
+        self.btn_cancel = QPushButton("取消")
+        self.btn_cancel.setObjectName("btnCancel")
+        self.btn_cancel.setFixedSize(200, 60)
+        font_button = QFont("Microsoft YaHei", 18)
+        font_button.setBold(True)
+        self.btn_cancel.setFont(font_button)
+        self.btn_cancel.clicked.connect(self.reject)
+        button_layout.addWidget(self.btn_cancel)
+        
+        # 确认按钮
+        self.btn_confirm = QPushButton("确认退出")
+        self.btn_confirm.setObjectName("btnConfirm")
+        self.btn_confirm.setFixedSize(200, 60)
+        self.btn_confirm.setFont(font_button)
+        self.btn_confirm.clicked.connect(self.accept)
+        button_layout.addWidget(self.btn_confirm)
+        
+        main_layout.addLayout(button_layout)
+    
+    # 3. 应用样式
+    def apply_styles(self):
+        colors = self.theme_manager.get_colors()
+        
+        self.setStyleSheet(f"""
+            QDialog {{
+                background: {colors.BG_MEDIUM};
+                border: 2px solid {colors.BORDER_GLOW};
+                border-radius: 12px;
+            }}
+            
+            QLabel#dialogTitle {{
+                color: {colors.GLOW_PRIMARY};
+                background: transparent;
+                border: none;
+            }}
+            
+            QLabel#dialogMessage {{
+                color: {colors.TEXT_PRIMARY};
+                background: transparent;
+                border: none;
+                line-height: 1.6;
+            }}
+            
+            QPushButton#btnCancel {{
+                background: {colors.BG_LIGHT};
+                color: {colors.TEXT_PRIMARY};
+                border: 2px solid {colors.BORDER_DARK};
+                border-radius: 8px;
+                padding: 10px;
+            }}
+            
+            QPushButton#btnCancel:hover {{
+                background: {colors.BG_MEDIUM};
+                border: 2px solid {colors.BORDER_GLOW};
+            }}
+            
+            QPushButton#btnCancel:pressed {{
+                background: {colors.BG_DARK};
+            }}
+            
+            QPushButton#btnConfirm {{
+                background: {colors.GLOW_PRIMARY};
+                color: {colors.TEXT_INVERSE};
+                border: 2px solid {colors.GLOW_PRIMARY};
+                border-radius: 8px;
+                padding: 10px;
+            }}
+            
+            QPushButton#btnConfirm:hover {{
+                background: {colors.BORDER_GLOW};
+                border: 2px solid {colors.BORDER_GLOW};
+            }}
+            
+            QPushButton#btnConfirm:pressed {{
+                background: {colors.BORDER_DARK};
+            }}
+        """)
+    
+    # 4. 键盘事件（Esc 取消，Enter 确认）
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.reject()
+        elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            self.accept()
+        else:
+            super().keyPressEvent(event)
