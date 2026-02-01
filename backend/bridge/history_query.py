@@ -440,10 +440,34 @@ class HistoryQueryService:
         start_time: Optional[datetime], 
         end_time: Optional[datetime]
     ) -> str:
-        """构建 Flux 查询的时间过滤器"""
+        """构建 Flux 查询的时间过滤器
+        
+        注意：InfluxDB 使用 UTC 时间，需要将本地时间（北京时间 UTC+8）转换为 UTC
+        """
         if start_time and end_time:
-            start_iso = start_time.strftime("%Y-%m-%dT%H:%M:%SZ")
-            end_iso = end_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+            from datetime import timezone, timedelta
+            
+            # 如果是 naive datetime（无时区信息），假设为北京时间（UTC+8）
+            if start_time.tzinfo is None:
+                # 先标记为北京时区（UTC+8）
+                beijing_tz = timezone(timedelta(hours=8))
+                start_beijing = start_time.replace(tzinfo=beijing_tz)
+                # 转换为 UTC（减去8小时）
+                start_utc = start_beijing.astimezone(timezone.utc)
+            else:
+                start_utc = start_time.astimezone(timezone.utc)
+            
+            if end_time.tzinfo is None:
+                beijing_tz = timezone(timedelta(hours=8))
+                end_beijing = end_time.replace(tzinfo=beijing_tz)
+                end_utc = end_beijing.astimezone(timezone.utc)
+            else:
+                end_utc = end_time.astimezone(timezone.utc)
+            
+            start_iso = start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+            end_iso = end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            logger.info(f"时间转换: 北京时间 {start_time} - {end_time} => UTC {start_iso} - {end_iso}")
             return f'|> range(start: {start_iso}, stop: {end_iso})'
         else:
             return '|> range(start: -90d)'

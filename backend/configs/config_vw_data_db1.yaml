@@ -516,6 +516,29 @@ db1_vw_data:
       unit: ""
       description: 第三路电机输出归一化值
 
+    # ============================================================
+    # 高压紧急停电弧流设置 (offset 182-186)
+    # ============================================================
+    - name: emergency_stop_arc_limit
+      offset: 182
+      type: INT
+      unit: "A"
+      description: 高压紧急停电弧流上限值
+
+    - name: emergency_stop_flag
+      offset: 184
+      bit: 0
+      type: BOOL
+      unit: ""
+      description: 高压紧急停电标志
+
+    - name: emergency_stop_enabled
+      offset: 184
+      bit: 1
+      type: BOOL
+      unit: ""
+      description: 高压紧急停电功能使能
+
 # ============================================================
 # 数据分组 (便于前端显示和API使用)
 # ============================================================

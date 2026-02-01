@@ -32,7 +32,7 @@ class IndicatorValve(QFrame):
     # 2. 初始化 UI
     def init_ui(self):
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 2, 0, 2)  # 修改为：左0 上2 右0 下2
+        main_layout.setContentsMargins(0, 0, 0, 0)  # 完全无内边距
         main_layout.setSpacing(2)  # 从8px改为2px，左侧和右侧容器之间的间距
         
         # 左侧 78%：仪表盘 + 编号/百分比
@@ -59,12 +59,24 @@ class IndicatorValve(QFrame):
         self.num_label.setFont(font)
         bottom_layout.addWidget(self.num_label, 20)
         
-        # 百分比 (80%) - 使用富文本，单独减小百分号
+        # 百分比容器 (80%)，内部再细分为70%显示区+10%空白区
+        percent_container = QWidget()
+        percent_container_layout = QHBoxLayout(percent_container)
+        percent_container_layout.setContentsMargins(0, 0, 0, 0)
+        percent_container_layout.setSpacing(0)
+        
+        # 百分比显示区 (70%) - 使用富文本，单独减小百分号，居中显示
         self.percent_label = QLabel("0%")
         self.percent_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.percent_label.setMinimumWidth(100)
         self.percent_label.setTextFormat(Qt.TextFormat.RichText)  # 启用富文本
-        bottom_layout.addWidget(self.percent_label, 80)
+        percent_container_layout.addWidget(self.percent_label, 70)
+        
+        # 右侧空白区 (10%)
+        spacer_widget = QWidget()
+        percent_container_layout.addWidget(spacer_widget, 10)
+        
+        bottom_layout.addWidget(percent_container, 80)
         
         left_layout.addWidget(bottom_widget, 40)
         

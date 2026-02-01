@@ -40,6 +40,9 @@ class ConfigDrivenDB1Parser:
         self.fields: List[Dict] = []
         self.data_groups: Dict[str, Any] = {}
         
+        # 上一次的紧急停电数据（用于变化检测）
+        self.last_emergency_data: Optional[Dict[str, Any]] = None
+        
         self._load_config()
     
     def _load_config(self):
@@ -115,10 +118,11 @@ class ConfigDrivenDB1Parser:
                 return data[offset]
             
             elif field_type == 'BOOL':
-                # 布尔值 (1 byte，取最低位)
+                # 布尔值 (支持位偏移)
                 if offset + 1 > len(data):
                     return False
-                return bool(data[offset] & 0x01)
+                bit = field_def.get('bit', 0)  # 获取位偏移，默认为0
+                return bool(data[offset] & (1 << bit))
             
             else:
                 # 未知类型，静默返回0，不打印警告
@@ -159,6 +163,8 @@ class ConfigDrivenDB1Parser:
             # 新增：死区上下限（独立字段）
             'arc_current_deadzone_upper': 0,
             'arc_current_deadzone_lower': 0,
+            # 新增：高压紧急停电数据
+            'emergency_stop': {},
         }
         
         try:
@@ -178,6 +184,9 @@ class ConfigDrivenDB1Parser:
                 if name in ['arc_current_setpoint_U', 'arc_current_setpoint_V', 'arc_current_setpoint_W', 'manual_deadzone_percent']:
                     # 设定值和死区百分比放入 vw_variables
                     result['vw_variables'][name] = value
+                elif name.startswith('emergency_stop'):
+                    # 高压紧急停电数据
+                    result['emergency_stop'][name] = value
                 elif name.startswith('motor_output'):
                     result['motor_outputs'][name] = value
                 elif name.startswith('arc_current'):
@@ -199,6 +208,9 @@ class ConfigDrivenDB1Parser:
             
             # 计算变频电流的组合值
             result['vfd_combined'] = self._calculate_vfd_combined(result)
+            
+            # 检查紧急停电数据是否变化
+            result['emergency_stop_changed'] = self._check_emergency_data_changed(result['emergency_stop'])
             
         except Exception as e:
             result['error'] = str(e)
@@ -308,6 +320,33 @@ class ConfigDrivenDB1Parser:
             )
         
         return combined
+    
+    def _check_emergency_data_changed(self, current_data: Dict[str, Any]) -> bool:
+        """检查紧急停电数据是否变化
+        
+        Args:
+            current_data: 当前的紧急停电数据
+            
+        Returns:
+            True 如果数据有变化，False 如果没有变化
+        """
+        if self.last_emergency_data is None:
+            # 第一次读取，记录数据
+            self.last_emergency_data = current_data.copy()
+            return True
+        
+        # 比较数据是否变化
+        changed = False
+        for key, value in current_data.items():
+            if key not in self.last_emergency_data or self.last_emergency_data[key] != value:
+                changed = True
+                break
+        
+        if changed:
+            # 数据有变化，更新记录
+            self.last_emergency_data = current_data.copy()
+        
+        return changed
     
     def parse_all(self, data: bytes) -> Dict[str, Any]:
         """parse 方法的别名，保持与其他解析器一致的接口"""

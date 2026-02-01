@@ -4,6 +4,7 @@
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
 from PyQt6.QtCore import pyqtSignal, QTimer, Qt
 from ui.styles.themes import ThemeManager
+from ui.widgets.common.button_progress import ProgressButton
 from loguru import logger
 
 
@@ -11,9 +12,9 @@ class BarBatchInfo(QFrame):
     """炉次信息栏组件"""
     
     # 信号定义
-    start_smelting_clicked = pyqtSignal()  # 开始冶炼信号
+    start_smelting_clicked = pyqtSignal()  # 开始记录信号
     abandon_batch_clicked = pyqtSignal()   # 放弃炉次信号
-    terminate_smelting_clicked = pyqtSignal()  # 终止冶炼信号（长按3秒）
+    terminate_smelting_clicked = pyqtSignal()  # 终止记录信号（长按3秒）
     
     # 1. 初始化组件
     def __init__(self, parent=None):
@@ -24,13 +25,7 @@ class BarBatchInfo(QFrame):
         self.batch_no = ""
         self.start_time = ""
         self.run_duration = ""
-        self.is_smelting = False  # 是否正在冶炼
-        
-        # 长按计时器
-        self.long_press_timer = QTimer()
-        self.long_press_timer.timeout.connect(self.on_long_press_complete)
-        self.long_press_duration = 3000  # 3秒
-        self.press_start_time = 0
+        self.is_smelting = False  # 是否正在记录
         
         # 确保背景完全不透明
         self.setAutoFillBackground(True)
@@ -55,29 +50,27 @@ class BarBatchInfo(QFrame):
         self.info_label.setObjectName("batchInfoLabel")
         layout.addWidget(self.info_label, stretch=1)
         
-        # 放弃炉次按钮（暂不实现功能）
+        # 放弃炉次按钮
         self.btn_abandon = QPushButton("放弃炉次")
         self.btn_abandon.setObjectName("btnAbandon")
         self.btn_abandon.setFixedSize(100, 36)
         self.btn_abandon.clicked.connect(self.abandon_batch_clicked.emit)
         layout.addWidget(self.btn_abandon)
         
-        # 开始冶炼按钮
-        self.btn_start = QPushButton("开始冶炼")
+        # 开始记录按钮
+        self.btn_start = QPushButton("开始记录")
         self.btn_start.setObjectName("btnStart")
         self.btn_start.setFixedSize(100, 36)
         self.btn_start.clicked.connect(self.start_smelting_clicked.emit)
         layout.addWidget(self.btn_start)
         
-        # 终止冶炼按钮（需要长按3秒）
-        self.btn_terminate = QPushButton("终止冶炼")
+        # 终止记录按钮（需要长按3秒，带进度条）
+        self.btn_terminate = ProgressButton("终止记录", parent=self)
         self.btn_terminate.setObjectName("btnTerminate")
         self.btn_terminate.setFixedSize(100, 36)
         self.btn_terminate.setVisible(False)  # 初始隐藏
+        self.btn_terminate.long_press_completed.connect(self.on_long_press_complete)
         layout.addWidget(self.btn_terminate)
-        
-        # 为终止按钮安装事件过滤器
-        self.btn_terminate.installEventFilter(self)
     
     # 3. 设置冶炼状态
     def set_smelting_state(self, is_smelting: bool, batch_no: str = "", start_time: str = "", run_duration: str = ""):
@@ -116,34 +109,13 @@ class BarBatchInfo(QFrame):
                    f"开始时间: {self.start_time}  |  " \
                    f"运行时长: {self.run_duration}"
         else:
-            text = "未开始冶炼"
+            text = "未开始记录"
         self.info_label.setText(text)
     
-    # 5. 事件过滤器（处理长按）
-    def eventFilter(self, obj, event):
-        if obj == self.btn_terminate:
-            if event.type() == event.Type.MouseButtonPress:
-                # 鼠标按下，开始计时
-                self.long_press_timer.start(self.long_press_duration)
-                self.btn_terminate.setText("按住3秒...")
-                logger.debug("开始长按终止冶炼按钮")
-                return True
-            elif event.type() == event.Type.MouseButtonRelease:
-                # 鼠标释放，取消计时
-                if self.long_press_timer.isActive():
-                    self.long_press_timer.stop()
-                    self.btn_terminate.setText("终止冶炼")
-                    logger.debug("取消长按终止冶炼")
-                return True
-        
-        return super().eventFilter(obj, event)
-    
-    # 6. 长按完成
+    # 5. 长按完成
     def on_long_press_complete(self):
-        """长按3秒完成，触发终止冶炼"""
-        self.long_press_timer.stop()
-        self.btn_terminate.setText("终止冶炼")
-        logger.info("长按3秒完成，触发终止冶炼")
+        """长按3秒完成，触发终止记录"""
+        logger.info("长按3秒完成，触发终止记录")
         self.terminate_smelting_clicked.emit()
     
     # 7. 应用样式

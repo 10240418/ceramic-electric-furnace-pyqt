@@ -7,6 +7,7 @@ from datetime import datetime
 from ui.styles.themes import ThemeManager
 from ui.widgets.common.panel_tech import PanelTech
 from ui.widgets.common.chart_tech import ChartTech
+from ui.widgets.common.dialog_message import show_error, show_warning
 from ui.widgets.realtime_data.card_data import CardData, DataItem
 from ui.widgets.realtime_data.chart_electrode import ChartElectrode, ElectrodeData
 from ui.widgets.realtime_data.butterfly_vaue import WidgetValveGrid
@@ -458,19 +459,21 @@ class PageElec3(QWidget):
                 # 过滤器压差
                 filter_diff = pressure_diff.get('value', 0.0) if isinstance(pressure_diff, dict) else 0.0
                 
-                # 更新炉皮冷却水卡片
+                # 更新炉皮冷却水卡片（添加报警检查）
                 shell_items = [
                     DataItem(
                         label="冷却水流速",
                         value=f"{self.mock_data['cooling_shell']['flow']:.2f}",
                         unit="m³/h",
                         icon="💧"
+                        # 不检查流速报警
                     ),
                     DataItem(
                         label="冷却水水压",
                         value=f"{self.mock_data['cooling_shell']['pressure']:.1f}",
                         unit="kPa",
-                        icon="💦"
+                        icon="💦",
+                        alarm_param="cooling_pressure_shell"  # 报警参数
                     ),
                     DataItem(
                         label="冷却水用量",
@@ -481,25 +484,28 @@ class PageElec3(QWidget):
                 ]
                 self.cooling_shell_panel.findChild(CardData).update_items(shell_items)
                 
-                # 更新炉盖冷却水卡片（添加过滤器压差）
+                # 更新炉盖冷却水卡片（添加报警检查）
                 cover_items = [
                     DataItem(
                         label="过滤器压差",
                         value=f"{filter_diff:.1f}",
                         unit="kPa",
-                        icon="🔧"
+                        icon="🔧",
+                        alarm_param="filter_pressure_diff"  # 报警参数
                     ),
                     DataItem(
                         label="冷却水流速",
                         value=f"{self.mock_data['cooling_cover']['flow']:.2f}",
                         unit="m³/h",
                         icon="💧"
+                        # 不检查流速报警
                     ),
                     DataItem(
                         label="冷却水水压",
                         value=f"{self.mock_data['cooling_cover']['pressure']:.1f}",
                         unit="kPa",
-                        icon="💦"
+                        icon="💦",
+                        alarm_param="cooling_pressure_cover"  # 报警参数
                     ),
                     DataItem(
                         label="冷却水用量",
@@ -617,17 +623,17 @@ class PageElec3(QWidget):
                 switch_db1_speed(high_speed=True)
                 logger.info("已切换 DB1 轮询到高速模式 (0.5s)")
                 
-                QMessageBox.information(self, "成功", result['message'])
-                
-                # 立即更新批次状态
+                # 成功时不弹窗，直接更新批次状态
                 self.update_batch_status()
             else:
+                # 失败时显示自定义错误弹窗
                 logger.warning(f"冶炼开始失败: {result['message']}")
-                QMessageBox.warning(self, "失败", result['message'])
+                show_warning(self, "开始冶炼失败", result['message'])
         
         except Exception as e:
+            # 异常时显示自定义错误弹窗
             logger.error(f"开始冶炼异常: {e}", exc_info=True)
-            QMessageBox.critical(self, "错误", f"开始冶炼失败: {e}")
+            show_error(self, "开始冶炼错误", f"开始冶炼失败: {str(e)}")
     
     # 13. 放弃炉次（先停止冶炼，再删除数据）
     def on_abandon_batch(self):
@@ -637,23 +643,27 @@ class PageElec3(QWidget):
         # 获取当前批次号
         batch_code = self.mock_data.get('batch_no', '')
         if not batch_code:
-            QMessageBox.warning(self, "警告", "当前没有进行中的批次")
+            from ui.widgets.common.dialog_confirm import DialogError
+            dialog = DialogError(
+                "警告",
+                "当前没有进行中的批次",
+                self
+            )
+            dialog.exec()
             return
         
         # 二次确认
-        reply = QMessageBox.question(
-            self,
-            "确认放弃炉次",
+        from ui.widgets.common.dialog_confirm import DialogConfirm
+        message = (
             f"确定要放弃当前炉次吗？\n\n"
             f"批次号: {batch_code}\n"
             f"开始时间: {self.mock_data.get('start_time', '')}\n"
             f"运行时长: {self.mock_data.get('run_duration', '')}\n\n"
-            f"警告: 此操作将删除该批次的所有历史数据，且无法恢复！",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            f"警告: 此操作将删除该批次的所有历史数据，且无法恢复！"
         )
+        dialog = DialogConfirm("确认放弃炉次", message, self)
         
-        if reply == QMessageBox.StandardButton.Yes:
+        if dialog.exec() == dialog.DialogCode.Accepted:
             try:
                 # 1. 删除该批次的所有数据
                 from backend.bridge.history_query import get_history_query_service
@@ -675,71 +685,78 @@ class PageElec3(QWidget):
                     switch_db1_speed(high_speed=False)
                     logger.info("已切换 DB1 轮询到低速模式 (5s)")
                     
-                    QMessageBox.information(
-                        self, 
-                        "成功", 
-                        f"批次 {batch_code} 已放弃\n所有历史数据已删除"
-                    )
-                    
-                    # 4. 立即更新批次状态
+                    # 4. 立即更新批次状态（成功不弹窗）
                     self.update_batch_status()
                 else:
+                    # 失败时显示错误弹窗
                     logger.error(f"删除批次数据失败: {delete_result['message']}")
-                    QMessageBox.critical(
-                        self, 
-                        "错误", 
-                        f"删除数据失败: {delete_result['message']}"
+                    from ui.widgets.common.dialog_confirm import DialogError
+                    error_dialog = DialogError(
+                        "操作失败",
+                        f"删除数据失败: {delete_result['message']}",
+                        self
                     )
+                    error_dialog.exec()
             
             except Exception as e:
                 logger.error(f"放弃炉次异常: {e}", exc_info=True)
-                QMessageBox.critical(self, "错误", f"放弃炉次失败: {e}")
+                from ui.widgets.common.dialog_confirm import DialogError
+                error_dialog = DialogError(
+                    "操作失败",
+                    f"放弃炉次失败: {str(e)}",
+                    self
+                )
+                error_dialog.exec()
     
-    # 14. 终止冶炼（长按3秒触发）
+    # 14. 终止记录（长按3秒触发）
     def on_terminate_smelting(self):
-        """终止冶炼（长按3秒后触发，结束批次并清除状态）"""
-        logger.info("长按3秒，触发终止冶炼")
+        """终止记录（长按3秒后触发，结束批次并清除状态）"""
+        logger.info("长按3秒，触发终止记录")
         
         # 二次确认
-        reply = QMessageBox.question(
-            self,
-            "确认终止",
-            "确定要终止当前冶炼吗？\n\n"
+        from ui.widgets.common.dialog_confirm import DialogConfirm
+        message = (
+            "确定要终止当前记录吗？\n\n"
             "终止后将结束当前批次，停止写入数据库。\n"
-            "批次数据将保留在数据库中。",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            "批次数据将保留在数据库中。"
         )
+        dialog = DialogConfirm("确认终止", message, self)
         
-        if reply == QMessageBox.StandardButton.Yes:
+        if dialog.exec() == dialog.DialogCode.Accepted:
             try:
                 # 调用后端服务停止冶炼（结束批次）
                 result = self.batch_service.stop()
                 
                 if result['success']:
-                    logger.info(f"冶炼终止成功: {result['message']}")
+                    logger.info(f"记录终止成功: {result['message']}")
                     
                     # 切换 DB1 轮询速度回低速模式 (5s)
                     from backend.services.polling_loops_v2 import switch_db1_speed
                     switch_db1_speed(high_speed=False)
                     logger.info("已切换 DB1 轮询到低速模式 (5s)")
                     
-                    QMessageBox.information(
-                        self, 
-                        "成功", 
-                        f"{result['message']}\n\n"
-                        f"批次数据已保留在数据库中"
-                    )
-                    
-                    # 立即更新批次状态
+                    # 立即更新批次状态（成功不弹窗）
                     self.update_batch_status()
                 else:
-                    logger.warning(f"冶炼终止失败: {result['message']}")
-                    QMessageBox.warning(self, "失败", result['message'])
+                    # 失败时显示错误弹窗
+                    logger.warning(f"记录终止失败: {result['message']}")
+                    from ui.widgets.common.dialog_confirm import DialogError
+                    error_dialog = DialogError(
+                        "操作失败",
+                        result['message'],
+                        self
+                    )
+                    error_dialog.exec()
             
             except Exception as e:
-                logger.error(f"终止冶炼异常: {e}", exc_info=True)
-                QMessageBox.critical(self, "错误", f"终止冶炼失败: {e}")
+                logger.error(f"终止记录异常: {e}", exc_info=True)
+                from ui.widgets.common.dialog_confirm import DialogError
+                error_dialog = DialogError(
+                    "操作失败",
+                    f"终止记录失败: {str(e)}",
+                    self
+                )
+                error_dialog.exec()
     
     # 15. 更新批次状态（从后端服务读取）
     def update_batch_status(self):

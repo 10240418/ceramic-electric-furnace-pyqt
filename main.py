@@ -24,6 +24,8 @@ from config import (
     FULLSCREEN, 
     LOG_LEVEL, 
     LOG_FILE,
+    LOG_ROTATION,
+    LOG_RETENTION,
     LOGS_DIR
 )
 
@@ -33,8 +35,8 @@ LOGS_DIR.mkdir(parents=True, exist_ok=True)
 # 配置 loguru 日志
 logger.add(
     LOG_FILE,
-    rotation="10 MB",
-    retention="7 days",
+    rotation=LOG_ROTATION,
+    retention=LOG_RETENTION,
     level=LOG_LEVEL,
     encoding="utf-8",
     format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"

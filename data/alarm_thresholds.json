@@ -1,0 +1,101 @@
+{
+  "electrode_depth_u": {
+    "warning_min": 145.0,
+    "warning_max": 1900.0,
+    "alarm_min": 150.0,
+    "alarm_max": 1960.0,
+    "enabled": true
+  },
+  "electrode_depth_v": {
+    "warning_min": 145.0,
+    "warning_max": 1900.0,
+    "alarm_min": 150.0,
+    "alarm_max": 1960.0,
+    "enabled": true
+  },
+  "electrode_depth_w": {
+    "warning_min": 145.0,
+    "warning_max": 1900.0,
+    "alarm_min": 150.0,
+    "alarm_max": 1960.0,
+    "enabled": true
+  },
+  "arc_current_u": {
+    "warning_min": 2000.0,
+    "warning_max": 6000.0,
+    "alarm_min": 1500.0,
+    "alarm_max": 8000.0,
+    "enabled": true
+  },
+  "arc_current_v": {
+    "warning_min": 2000.0,
+    "warning_max": 6000.0,
+    "alarm_min": 1500.0,
+    "alarm_max": 8000.0,
+    "enabled": true
+  },
+  "arc_current_w": {
+    "warning_min": 2000.0,
+    "warning_max": 6000.0,
+    "alarm_min": 1500.0,
+    "alarm_max": 8000.0,
+    "enabled": true
+  },
+  "arc_voltage_u": {
+    "warning_min": 60.0,
+    "warning_max": 70.0,
+    "alarm_min": 50.0,
+    "alarm_max": 100.0,
+    "enabled": true
+  },
+  "arc_voltage_v": {
+    "warning_min": 60.0,
+    "warning_max": 70.0,
+    "alarm_min": 50.0,
+    "alarm_max": 100.0,
+    "enabled": true
+  },
+  "arc_voltage_w": {
+    "warning_min": 60.0,
+    "warning_max": 70.0,
+    "alarm_min": 50.0,
+    "alarm_max": 100.0,
+    "enabled": true
+  },
+  "cooling_pressure_shell": {
+    "warning_min": 8.0,
+    "warning_max": 55.0,
+    "alarm_min": 4.0,
+    "alarm_max": 60.0,
+    "enabled": true
+  },
+  "cooling_pressure_cover": {
+    "warning_min": 8.0,
+    "warning_max": 55.0,
+    "alarm_min": 4.0,
+    "alarm_max": 60.0,
+    "enabled": true
+  },
+  "cooling_flow_shell": {
+    "warning_min": null,
+    "warning_max": null,
+    "alarm_min": null,
+    "alarm_max": null,
+    "enabled": false
+  },
+  "cooling_flow_cover": {
+    "warning_min": null,
+    "warning_max": null,
+    "alarm_min": null,
+    "alarm_max": null,
+    "enabled": false
+  },
+  "filter_pressure_diff": {
+    "warning_min": null,
+    "warning_max": 30.0,
+    "alarm_min": null,
+    "alarm_max": 50.0,
+    "enabled": true
+  }
+}
+

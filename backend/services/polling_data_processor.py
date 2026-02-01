@@ -125,6 +125,17 @@ _prev_setpoints: Optional[tuple] = None
 _prev_deadzone: Optional[float] = None
 
 # ============================================================
+# 累计值变化检测缓存 (用于智能写入数据库)
+# ============================================================
+# 上一次写入数据库的投料累计值
+_prev_feeding_total: float = 0.0
+# 上一次写入数据库的冷却水累计值
+_prev_furnace_shell_water_total: float = 0.0
+_prev_furnace_cover_water_total: float = 0.0
+# 上一次写入数据库的能耗累计值
+_prev_energy_total: float = 0.0
+
+# ============================================================
 # 蝶阀状态队列缓存 (Valve Status Queue Cache)
 # ============================================================
 # 每个蝶阀维护一个队列，存储最近100次的开关状态
@@ -256,8 +267,10 @@ def process_modbus_data(raw_data: bytes):
     
     数据包含: 红外测距, 压力, 流量, 蝶阀状态
     新增: 冷却水流量计算 (0.5s轮询, 15秒累计)
+    优化: 冷却水累计值只在变化时写入数据库
     """
     global _latest_modbus_data, _latest_modbus_timestamp
+    global _prev_furnace_shell_water_total, _prev_furnace_cover_water_total
     
     if not _modbus_parser:
         return
@@ -436,22 +449,35 @@ def process_modbus_data(raw_data: bytes):
             
             # ========================================
             # 6. 添加冷却水累计量 Point (用于历史查询)
+            # 【优化】只在累计值变化时写入
             # ========================================
-            water_point = {
-                'measurement': 'sensor_data',
-                'tags': {
-                    'device_type': 'electric_furnace',
-                    'module_type': 'cooling_water_total',
-                    'device_id': 'furnace_1',
-                    'batch_code': batch_code
-                },
-                'fields': {
-                    'furnace_shell_water_total': parsed.get('furnace_shell_total_volume', 0.0),
-                    'furnace_cover_water_total': parsed.get('furnace_cover_total_volume', 0.0),
-                },
-                'time': now
-            }
-            _normal_buffer.append(water_point)
+            shell_total = parsed.get('furnace_shell_total_volume', 0.0)
+            cover_total = parsed.get('furnace_cover_total_volume', 0.0)
+            
+            # 检查是否变化（变化超过 0.01 m³ 才写入）
+            shell_changed = abs(shell_total - _prev_furnace_shell_water_total) > 0.01
+            cover_changed = abs(cover_total - _prev_furnace_cover_water_total) > 0.01
+            
+            if shell_changed or cover_changed:
+                water_point = {
+                    'measurement': 'sensor_data',
+                    'tags': {
+                        'device_type': 'electric_furnace',
+                        'module_type': 'cooling_water_total',
+                        'device_id': 'furnace_1',
+                        'batch_code': batch_code
+                    },
+                    'fields': {
+                        'furnace_shell_water_total': shell_total,
+                        'furnace_cover_water_total': cover_total,
+                    },
+                    'time': now
+                }
+                _normal_buffer.append(water_point)
+                
+                # 更新上次写入的值
+                _prev_furnace_shell_water_total = shell_total
+                _prev_furnace_cover_water_total = cover_total
             
             # ========================================
             # 7. 添加炉皮-炉盖压差绝对值 Point (用于历史查询)
@@ -484,6 +510,7 @@ def process_arc_data(raw_data: bytes, batch_code: str):
     
     设定值和死区仅在变化时才写入数据库
     新增: 功率计算和能耗累计
+    优化: 能耗累计值只在变化时写入数据库
     
     重要: 无论是否有批次号，都会更新实时缓存（供前端显示）
           只有有批次号时才写入历史数据库
@@ -493,7 +520,7 @@ def process_arc_data(raw_data: bytes, batch_code: str):
         batch_code: 当前批次号（可能为空）
     """
     global _latest_arc_data, _latest_arc_timestamp
-    global _prev_setpoints, _prev_deadzone
+    global _prev_setpoints, _prev_deadzone, _prev_energy_total
     
     if not _db1_parser:
         return
@@ -562,7 +589,7 @@ def process_arc_data(raw_data: bytes, batch_code: str):
             # 获取最新能耗数据（使用已导入的 get_power_energy_calculator）
             realtime_power_data = power_calc.get_realtime_data()
             
-            # 构建弧流数据（包含能耗）
+            # 构建弧流数据（包含能耗和紧急停电数据）
             arc_data = {
                 'arc_current': arc_cache['arc_current'],
                 'arc_voltage': arc_cache['arc_voltage'],
@@ -570,6 +597,7 @@ def process_arc_data(raw_data: bytes, batch_code: str):
                 'energy_total': realtime_power_data.get('energy_total', 0.0),  # 添加能耗
                 'setpoints': arc_cache['setpoints'],
                 'manual_deadzone_percent': arc_cache['manual_deadzone_percent'],
+                'emergency_stop': parsed.get('emergency_stop', {}),  # 添加紧急停电数据
                 'timestamp': time.time()
             }
             
@@ -625,6 +653,7 @@ def process_arc_data(raw_data: bytes, batch_code: str):
         
         # ========================================
         # 10. 检查是否需要计算能耗 (每15秒)
+        # 【优化】只在能耗累计值变化时写入
         # ========================================
         # 【修复】只有在运行状态且有批次号时才计算能耗
         from backend.services.batch_service import get_batch_service
@@ -632,22 +661,30 @@ def process_arc_data(raw_data: bytes, batch_code: str):
         
         if batch_code and batch_service_check.is_running and power_result['should_calc_energy']:
             energy_result = power_calc.calculate_energy_increment()
+            current_energy_total = energy_result['energy_total']
             
-            # 将能耗数据添加到缓存（批量写入）
-            energy_point = {
-                'measurement': 'sensor_data',
-                'tags': {
-                    'device_type': 'electric_furnace',
-                    'module_type': 'energy_consumption',
-                    'device_id': 'electrode',
-                    'batch_code': batch_code
-                },
-                'fields': {
-                    'energy_total': energy_result['energy_total'],
-                },
-                'time': now
-            }
-            _arc_buffer.append(energy_point)
+            # 检查能耗是否变化（变化超过 0.01 kWh 才写入）
+            energy_changed = abs(current_energy_total - _prev_energy_total) > 0.01
+            
+            if energy_changed:
+                # 将能耗数据添加到缓存（批量写入）
+                energy_point = {
+                    'measurement': 'sensor_data',
+                    'tags': {
+                        'device_type': 'electric_furnace',
+                        'module_type': 'energy_consumption',
+                        'device_id': 'electrode',
+                        'batch_code': batch_code
+                    },
+                    'fields': {
+                        'energy_total': current_energy_total,
+                    },
+                    'time': now
+                }
+                _arc_buffer.append(energy_point)
+                
+                # 更新上次写入的值
+                _prev_energy_total = current_energy_total
             
     except Exception as e:
         print(f" 处理 DB1 弧流弧压数据失败: {e}")
@@ -716,13 +753,15 @@ def process_weight_data(
 ):
     """处理料仓重量数据 (Modbus RTU + PLC 投料信号)
     
+    优化: 只在投料累计值变化时写入数据库，避免重复写入相同的累计值
+    
     Args:
         weight_result: read_hopper_weight() 返回的结果
         batch_code: 当前批次号
         is_discharging: %Q3.7 秤排料信号 (True=正在投料)
         is_requesting: %Q4.0 秤要料信号
     """
-    global _latest_weight_data, _latest_weight_timestamp
+    global _latest_weight_data, _latest_weight_timestamp, _prev_feeding_total
 
     try:
         # 1. 更新内存缓存 (始终更新，即使没有批次号)
@@ -760,9 +799,12 @@ def process_weight_data(
                     calc_result = feeding_acc.calculate_feeding()
                     # print(f"📊 投料计算完成: 本次新增 {calc_result['total_added']:.1f}kg, 累计 {calc_result['feeding_total']:.1f}kg")
             
+            # 获取当前累计值
+            current_feeding_total = feeding_acc.get_feeding_total()
+            
             # 更新缓存中的投料总量
             with _data_lock:
-                _latest_weight_data['feeding_total'] = feeding_acc.get_feeding_total()
+                _latest_weight_data['feeding_total'] = current_feeding_total
                 _latest_weight_data['is_discharging'] = is_discharging
             
             # ========================================
@@ -777,7 +819,7 @@ def process_weight_data(
                 if sensor_data:
                     sensor_data['hopper'] = {
                         'weight': weight_kg,
-                        'feeding_total': feeding_acc.get_feeding_total(),
+                        'feeding_total': current_feeding_total,
                         'is_discharging': is_discharging,
                         'is_requesting': is_requesting
                     }
@@ -786,9 +828,22 @@ def process_weight_data(
             except Exception as cache_err:
                 pass  # 缓存更新失败不影响主流程
             
-            # 2.3 转换为 InfluxDB Point（只存储净重和累计投料量）
-            # 【修复】只有在运行状态时才写入数据库
+            # ========================================
+            # 2.3 转换为 InfluxDB Point
+            # 【优化】只在投料累计值变化时写入 feeding_total
+            # ========================================
             if batch_service.is_running:
+                # 检查累计值是否变化（变化超过 0.1kg 才写入）
+                feeding_total_changed = abs(current_feeding_total - _prev_feeding_total) > 0.1
+                
+                # 构建 fields
+                fields = {'net_weight': weight_kg}
+                
+                # 只在累计值变化时添加 feeding_total 字段
+                if feeding_total_changed:
+                    fields['feeding_total'] = current_feeding_total
+                    _prev_feeding_total = current_feeding_total  # 更新上次写入的值
+                
                 point_dict = {
                     'measurement': 'sensor_data',
                     'tags': {
@@ -797,10 +852,7 @@ def process_weight_data(
                         'device_id': 'hopper_1',
                         'batch_code': batch_code
                     },
-                    'fields': {
-                        'net_weight': weight_kg,
-                        'feeding_total': feeding_acc.get_feeding_total(),
-                    },
+                    'fields': fields,
                     'time': now
                 }
                 

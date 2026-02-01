@@ -2,14 +2,16 @@
 历史曲线页面 - 重构版（只保留折线图模式）
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                              QPushButton, QScrollArea, QSizePolicy)
+                              QPushButton, QScrollArea, QSizePolicy, QFileDialog, QMessageBox)
 from PyQt6.QtCore import Qt, QTimer, QDateTime
 from ui.styles.themes import ThemeManager
 from ui.widgets.common.panel_tech import PanelTech
 from ui.widgets.history_curve.chart_line import ChartLine
 from ui.widgets.history_curve.bar_history import BarHistory
+from ui.widgets.history_curve.button_export import ButtonExport
 from ui.pages.page_batch_compare import PageBatchCompare
 from backend.bridge.history_query import get_history_query_service
+from backend.services.data_exporter import get_data_exporter
 from datetime import datetime, timedelta
 from loguru import logger
 import random
@@ -25,11 +27,16 @@ class PageHistoryCurve(QWidget):
         
         # 后端查询服务
         self.history_service = get_history_query_service()
+        self.data_exporter = get_data_exporter()
         
         # 状态变量
         self.is_history_mode = False
         self.selected_batch = ""
         self.selected_batches = []
+        
+        # 当前查询的时间范围（用于导出）
+        self.current_start_time = None
+        self.current_end_time = None
         
         # 当前选择
         self.arc_select = "弧流"
@@ -87,10 +94,17 @@ class PageHistoryCurve(QWidget):
             logger.warning("批次号为空，无法查询")
             return
         
+        # 保存当前查询的时间范围（用于导出）
+        self.current_start_time = start_time
+        self.current_end_time = end_time
+        
         logger.info(f"开始查询批次 {batch_code} 的历史数据，时间范围: {start_time} - {end_time}")
         
+        # 所有时间范围统一使用 100 个数据点
+        target_points = 100
+        
         # 计算最佳聚合间隔
-        interval = self.history_service.calculate_optimal_interval(start_time, end_time, target_points=100)
+        interval = self.history_service.calculate_optimal_interval(start_time, end_time, target_points=target_points)
         logger.info(f"使用聚合间隔: {interval}")
         
         try:
@@ -191,6 +205,12 @@ class PageHistoryCurve(QWidget):
         self.arc_panel = PanelTech("弧压/流/电极 (A/V/mm)")
         self.arc_panel.setMinimumHeight(300)
         
+        # 创建下拉框和导出按钮的容器
+        arc_controls = QWidget()
+        arc_controls_layout = QHBoxLayout(arc_controls)
+        arc_controls_layout.setContentsMargins(0, 0, 0, 0)
+        arc_controls_layout.setSpacing(8)
+        
         # 弧压/流/电极下拉选择器
         from ui.widgets.history_curve.dropdown_tech import DropdownTech
         arc_options = ["弧流", "弧压", "电极高度"]
@@ -200,7 +220,14 @@ class PageHistoryCurve(QWidget):
             accent_color=colors.GLOW_CYAN
         )
         self.arc_dropdown.selection_changed.connect(self.on_arc_changed)
-        self.arc_panel.add_header_action(self.arc_dropdown)
+        arc_controls_layout.addWidget(self.arc_dropdown)
+        
+        # 弧压/流/电极导出按钮
+        self.arc_export_btn = ButtonExport(accent_color=colors.GLOW_CYAN)
+        self.arc_export_btn.export_clicked.connect(self.on_arc_export_clicked)
+        arc_controls_layout.addWidget(self.arc_export_btn)
+        
+        self.arc_panel.add_header_action(arc_controls)
         
         # 弧压/流/电极图表
         self.arc_chart = ChartLine(y_label="", accent_color=colors.GLOW_CYAN)
@@ -215,6 +242,12 @@ class PageHistoryCurve(QWidget):
         self.power_panel = PanelTech("功率/能耗 (kW/kWh)")
         self.power_panel.setMinimumHeight(300)
         
+        # 创建下拉框和导出按钮的容器
+        power_controls = QWidget()
+        power_controls_layout = QHBoxLayout(power_controls)
+        power_controls_layout.setContentsMargins(0, 0, 0, 0)
+        power_controls_layout.setSpacing(8)
+        
         # 功率/能耗下拉选择器
         power_options = ["功率", "能耗"]
         self.power_dropdown = DropdownTech(
@@ -223,7 +256,14 @@ class PageHistoryCurve(QWidget):
             accent_color=colors.GLOW_ORANGE
         )
         self.power_dropdown.selection_changed.connect(self.on_power_changed)
-        self.power_panel.add_header_action(self.power_dropdown)
+        power_controls_layout.addWidget(self.power_dropdown)
+        
+        # 功率/能耗导出按钮
+        self.power_export_btn = ButtonExport(accent_color=colors.GLOW_ORANGE)
+        self.power_export_btn.export_clicked.connect(self.on_power_export_clicked)
+        power_controls_layout.addWidget(self.power_export_btn)
+        
+        self.power_panel.add_header_action(power_controls)
         
         # 功率/能耗图表
         self.power_chart = ChartLine(y_label="", accent_color=colors.GLOW_ORANGE)
@@ -246,6 +286,12 @@ class PageHistoryCurve(QWidget):
         self.hopper_panel = PanelTech("料仓 (kg)")
         self.hopper_panel.setMinimumHeight(300)
         
+        # 创建下拉框和导出按钮的容器
+        hopper_controls = QWidget()
+        hopper_controls_layout = QHBoxLayout(hopper_controls)
+        hopper_controls_layout.setContentsMargins(0, 0, 0, 0)
+        hopper_controls_layout.setSpacing(8)
+        
         # 料仓下拉选择器
         hopper_options = ["投料量"]
         self.hopper_dropdown = DropdownTech(
@@ -254,7 +300,14 @@ class PageHistoryCurve(QWidget):
             accent_color=colors.GLOW_BLUE
         )
         self.hopper_dropdown.selection_changed.connect(self.on_hopper_changed)
-        self.hopper_panel.add_header_action(self.hopper_dropdown)
+        hopper_controls_layout.addWidget(self.hopper_dropdown)
+        
+        # 料仓导出按钮
+        self.hopper_export_btn = ButtonExport(accent_color=colors.GLOW_BLUE)
+        self.hopper_export_btn.export_clicked.connect(self.on_hopper_export_clicked)
+        hopper_controls_layout.addWidget(self.hopper_export_btn)
+        
+        self.hopper_panel.add_header_action(hopper_controls)
         
         # 料仓图表
         self.hopper_chart = ChartLine(y_label="", accent_color=colors.GLOW_BLUE)
@@ -269,6 +322,12 @@ class PageHistoryCurve(QWidget):
         self.cooling_panel = PanelTech("冷却水累计用量 (m³)")
         self.cooling_panel.setMinimumHeight(300)
         
+        # 创建下拉框和导出按钮的容器
+        cooling_controls = QWidget()
+        cooling_controls_layout = QHBoxLayout(cooling_controls)
+        cooling_controls_layout.setContentsMargins(0, 0, 0, 0)
+        cooling_controls_layout.setSpacing(8)
+        
         # 冷却水下拉选择器
         cooling_options = ["炉皮冷却水累计", "炉盖冷却水累计"]
         self.cooling_dropdown = DropdownTech(
@@ -277,7 +336,14 @@ class PageHistoryCurve(QWidget):
             accent_color=colors.GLOW_GREEN
         )
         self.cooling_dropdown.selection_changed.connect(self.on_cooling_changed)
-        self.cooling_panel.add_header_action(self.cooling_dropdown)
+        cooling_controls_layout.addWidget(self.cooling_dropdown)
+        
+        # 冷却水导出按钮
+        self.cooling_export_btn = ButtonExport(accent_color=colors.GLOW_GREEN)
+        self.cooling_export_btn.export_clicked.connect(self.on_cooling_export_clicked)
+        cooling_controls_layout.addWidget(self.cooling_export_btn)
+        
+        self.cooling_panel.add_header_action(cooling_controls)
         
         # 冷却水图表
         self.cooling_chart = ChartLine(y_label="", accent_color=colors.GLOW_GREEN)
@@ -373,7 +439,8 @@ class PageHistoryCurve(QWidget):
             data_3 = self.cached_data["arc_current"]["3"]
             
             if data_1 and data_2 and data_3:
-                x_data = list(range(len(data_1)))
+                # 使用时间戳作为X轴
+                x_data = [self._parse_time_to_timestamp(d["time"]) for d in data_1]
                 y_data_1 = [d["value"] for d in data_1]
                 y_data_2 = [d["value"] for d in data_2]
                 y_data_3 = [d["value"] for d in data_3]
@@ -383,7 +450,7 @@ class PageHistoryCurve(QWidget):
                     ("2#电极 (A)", x_data, y_data_2, colors.CHART_LINE_2),
                     ("3#电极 (A)", x_data, y_data_3, colors.CHART_LINE_3),
                 ]
-                self.arc_chart.update_multi_data(data_list)
+                self.arc_chart.update_multi_data_with_time(data_list)
                 self.arc_chart.plot_widget.setLabel('left', "")
             
         elif self.arc_select == "弧压":
@@ -392,7 +459,7 @@ class PageHistoryCurve(QWidget):
             data_3 = self.cached_data["arc_voltage"]["3"]
             
             if data_1 and data_2 and data_3:
-                x_data = list(range(len(data_1)))
+                x_data = [self._parse_time_to_timestamp(d["time"]) for d in data_1]
                 y_data_1 = [d["value"] for d in data_1]
                 y_data_2 = [d["value"] for d in data_2]
                 y_data_3 = [d["value"] for d in data_3]
@@ -402,7 +469,7 @@ class PageHistoryCurve(QWidget):
                     ("2#电极 (V)", x_data, y_data_2, colors.CHART_LINE_2),
                     ("3#电极 (V)", x_data, y_data_3, colors.CHART_LINE_3),
                 ]
-                self.arc_chart.update_multi_data(data_list)
+                self.arc_chart.update_multi_data_with_time(data_list)
                 self.arc_chart.plot_widget.setLabel('left', "")
         
         else:  # 电极高度
@@ -411,7 +478,7 @@ class PageHistoryCurve(QWidget):
             data_3 = self.cached_data["electrode_depth"]["3"]
             
             if data_1 and data_2 and data_3:
-                x_data = list(range(len(data_1)))
+                x_data = [self._parse_time_to_timestamp(d["time"]) for d in data_1]
                 y_data_1 = [d["value"] for d in data_1]
                 y_data_2 = [d["value"] for d in data_2]
                 y_data_3 = [d["value"] for d in data_3]
@@ -421,48 +488,55 @@ class PageHistoryCurve(QWidget):
                     ("2#电极 (mm)", x_data, y_data_2, colors.CHART_LINE_2),
                     ("3#电极 (mm)", x_data, y_data_3, colors.CHART_LINE_3),
                 ]
-                self.arc_chart.update_multi_data(data_list)
+                self.arc_chart.update_multi_data_with_time(data_list)
                 self.arc_chart.plot_widget.setLabel('left', "")
         
         # 更新功率/能耗图表
         if self.power_select == "功率":
             power_data = self.cached_data["power"]
             if power_data:
-                x_data = list(range(len(power_data)))
+                x_data = [self._parse_time_to_timestamp(d["time"]) for d in power_data]
                 y_data = [d["value"] for d in power_data]
-                self.power_chart.update_data(x_data, y_data, "功率 (kW)")
+                self.power_chart.update_data_with_time(x_data, y_data, "功率 (kW)")
                 self.power_chart.plot_widget.setLabel('left', "")
         else:
             energy_data = self.cached_data["energy"]
             if energy_data:
-                x_data = list(range(len(energy_data)))
+                x_data = [self._parse_time_to_timestamp(d["time"]) for d in energy_data]
                 y_data = [d["value"] for d in energy_data]
-                self.power_chart.update_data(x_data, y_data, "能耗 (kWh)")
+                self.power_chart.update_data_with_time(x_data, y_data, "能耗 (kWh)")
                 self.power_chart.plot_widget.setLabel('left', "")
         
         # 更新料仓图表
         feeding_data = self.cached_data["feeding_total"]
         if feeding_data:
-            x_data = list(range(len(feeding_data)))
+            x_data = [self._parse_time_to_timestamp(d["time"]) for d in feeding_data]
             y_data = [d["value"] for d in feeding_data]
-            self.hopper_chart.update_data(x_data, y_data, "投料累计 (kg)")
+            self.hopper_chart.update_data_with_time(x_data, y_data, "投料累计 (kg)")
             self.hopper_chart.plot_widget.setLabel('left', "")
         
         # 更新冷却水图表
         if self.cooling_select == "炉皮冷却水累计":
             shell_data = self.cached_data["shell_water"]
             if shell_data:
-                x_data = list(range(len(shell_data)))
+                x_data = [self._parse_time_to_timestamp(d["time"]) for d in shell_data]
                 y_data = [d["value"] for d in shell_data]
-                self.cooling_chart.update_data(x_data, y_data, "炉皮冷却水累计 (m³)")
+                self.cooling_chart.update_data_with_time(x_data, y_data, "炉皮冷却水累计 (m³)")
                 self.cooling_chart.plot_widget.setLabel('left', "")
         else:
             cover_data = self.cached_data["cover_water"]
             if cover_data:
-                x_data = list(range(len(cover_data)))
+                x_data = [self._parse_time_to_timestamp(d["time"]) for d in cover_data]
                 y_data = [d["value"] for d in cover_data]
-                self.cooling_chart.update_data(x_data, y_data, "炉盖冷却水累计 (m³)")
+                self.cooling_chart.update_data_with_time(x_data, y_data, "炉盖冷却水累计 (m³)")
                 self.cooling_chart.plot_widget.setLabel('left', "")
+    
+    # 12.1. 解析时间字符串为时间戳
+    def _parse_time_to_timestamp(self, time_str: str) -> float:
+        """将ISO格式时间字符串转换为时间戳（秒）"""
+        from dateutil import parser
+        dt = parser.isoparse(time_str)
+        return dt.timestamp()
     
     # 13. 更新批次对比
     def update_batch_compare(self):
@@ -557,3 +631,291 @@ class PageHistoryCurve(QWidget):
     # 19. 主题变化时重新应用样式
     def on_theme_changed(self):
         self.apply_styles()
+    
+    # 20. 弧压/流/电极导出
+    def on_arc_export_clicked(self):
+        """导出弧压/流/电极数据"""
+        if not self.selected_batch:
+            QMessageBox.warning(self, "导出失败", "请先选择批次并查询数据")
+            return
+        
+        if not self.current_start_time or not self.current_end_time:
+            QMessageBox.warning(self, "导出失败", "请先查询数据")
+            return
+        
+        # 根据当前选择获取数据
+        if self.arc_select == "弧流":
+            data_type_map = {
+                "1": "1#弧流",
+                "2": "2#弧流",
+                "3": "3#弧流"
+            }
+            data_source = self.cached_data["arc_current"]
+        elif self.arc_select == "弧压":
+            data_type_map = {
+                "1": "1#弧压",
+                "2": "2#弧压",
+                "3": "3#弧压"
+            }
+            data_source = self.cached_data["arc_voltage"]
+        else:  # 电极高度
+            data_type_map = {
+                "1": "1#电极高度",
+                "2": "2#电极高度",
+                "3": "3#电极高度"
+            }
+            data_source = self.cached_data["electrode_depth"]
+        
+        # 弹出文件保存对话框
+        default_filename = f"{self.selected_batch}_{self.arc_select}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出数据",
+            default_filename,
+            "Excel 文件 (*.xlsx)"
+        )
+        
+        if not file_path:
+            return
+        
+        # 导出三相数据（分别导出）
+        try:
+            # 创建工作簿
+            import openpyxl
+            from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+            
+            wb = openpyxl.Workbook()
+            wb.remove(wb.active)  # 删除默认工作表
+            
+            # 为每相创建一个工作表
+            for phase_id, data_type in data_type_map.items():
+                data_list = data_source.get(phase_id, [])
+                
+                if not data_list:
+                    logger.warning(f"{data_type} 数据为空，跳过")
+                    continue
+                
+                # 创建工作表
+                ws = wb.create_sheet(title=data_type)
+                
+                # 设置列宽
+                ws.column_dimensions['A'].width = 20
+                ws.column_dimensions['B'].width = 22
+                ws.column_dimensions['C'].width = 22
+                ws.column_dimensions['D'].width = 20
+                ws.column_dimensions['E'].width = 15
+                
+                # 表头样式
+                header_font = Font(name='Microsoft YaHei', size=12, bold=True, color='FFFFFF')
+                header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                header_alignment = Alignment(horizontal='center', vertical='center')
+                border = Border(
+                    left=Side(style='thin', color='000000'),
+                    right=Side(style='thin', color='000000'),
+                    top=Side(style='thin', color='000000'),
+                    bottom=Side(style='thin', color='000000')
+                )
+                
+                # 写入表头
+                headers = ['批次编号', '起始时间', '截止时间', '数据类型', '数据值']
+                for col_idx, header in enumerate(headers, start=1):
+                    cell = ws.cell(row=1, column=col_idx, value=header)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = header_alignment
+                    cell.border = border
+                
+                # 数据样式
+                data_font = Font(name='Microsoft YaHei', size=11)
+                data_alignment = Alignment(horizontal='center', vertical='center')
+                
+                # 格式化时间
+                start_time_str = self.current_start_time.strftime('%Y-%m-%d %H:%M:%S')
+                end_time_str = self.current_end_time.strftime('%Y-%m-%d %H:%M:%S')
+                
+                # 写入数据
+                for row_idx, data_point in enumerate(data_list, start=2):
+                    # 批次编号
+                    cell = ws.cell(row=row_idx, column=1, value=self.selected_batch)
+                    cell.font = data_font
+                    cell.alignment = data_alignment
+                    cell.border = border
+                    
+                    # 起始时间
+                    cell = ws.cell(row=row_idx, column=2, value=start_time_str)
+                    cell.font = data_font
+                    cell.alignment = data_alignment
+                    cell.border = border
+                    
+                    # 截止时间
+                    cell = ws.cell(row=row_idx, column=3, value=end_time_str)
+                    cell.font = data_font
+                    cell.alignment = data_alignment
+                    cell.border = border
+                    
+                    # 数据类型
+                    cell = ws.cell(row=row_idx, column=4, value=data_type)
+                    cell.font = data_font
+                    cell.alignment = data_alignment
+                    cell.border = border
+                    
+                    # 数据值
+                    value = data_point.get('value', 0)
+                    cell = ws.cell(row=row_idx, column=5, value=round(value, 2))
+                    cell.font = data_font
+                    cell.alignment = data_alignment
+                    cell.border = border
+            
+            # 保存文件
+            wb.save(file_path)
+            logger.info(f"数据导出成功: {file_path}")
+            QMessageBox.information(self, "导出成功", f"数据已导出到:\n{file_path}")
+            
+        except Exception as e:
+            logger.error(f"导出数据失败: {e}", exc_info=True)
+            QMessageBox.critical(self, "导出失败", f"导出数据时发生错误:\n{str(e)}")
+    
+    # 21. 功率/能耗导出
+    def on_power_export_clicked(self):
+        """导出功率/能耗数据"""
+        if not self.selected_batch:
+            QMessageBox.warning(self, "导出失败", "请先选择批次并查询数据")
+            return
+        
+        if not self.current_start_time or not self.current_end_time:
+            QMessageBox.warning(self, "导出失败", "请先查询数据")
+            return
+        
+        # 根据当前选择获取数据
+        if self.power_select == "功率":
+            data_type = "功率"
+            data_list = self.cached_data["power"]
+        else:
+            data_type = "能耗"
+            data_list = self.cached_data["energy"]
+        
+        if not data_list:
+            QMessageBox.warning(self, "导出失败", f"{data_type}数据为空")
+            return
+        
+        # 弹出文件保存对话框
+        default_filename = f"{self.selected_batch}_{data_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出数据",
+            default_filename,
+            "Excel 文件 (*.xlsx)"
+        )
+        
+        if not file_path:
+            return
+        
+        # 导出数据
+        success = self.data_exporter.export_to_excel(
+            file_path,
+            self.selected_batch,
+            self.current_start_time,
+            self.current_end_time,
+            data_type,
+            data_list
+        )
+        
+        if success:
+            QMessageBox.information(self, "导出成功", f"数据已导出到:\n{file_path}")
+        else:
+            QMessageBox.critical(self, "导出失败", "导出数据时发生错误，请查看日志")
+    
+    # 22. 料仓导出
+    def on_hopper_export_clicked(self):
+        """导出料仓数据"""
+        if not self.selected_batch:
+            QMessageBox.warning(self, "导出失败", "请先选择批次并查询数据")
+            return
+        
+        if not self.current_start_time or not self.current_end_time:
+            QMessageBox.warning(self, "导出失败", "请先查询数据")
+            return
+        
+        data_type = "投料量"
+        data_list = self.cached_data["feeding_total"]
+        
+        if not data_list:
+            QMessageBox.warning(self, "导出失败", f"{data_type}数据为空")
+            return
+        
+        # 弹出文件保存对话框
+        default_filename = f"{self.selected_batch}_{data_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出数据",
+            default_filename,
+            "Excel 文件 (*.xlsx)"
+        )
+        
+        if not file_path:
+            return
+        
+        # 导出数据
+        success = self.data_exporter.export_to_excel(
+            file_path,
+            self.selected_batch,
+            self.current_start_time,
+            self.current_end_time,
+            data_type,
+            data_list
+        )
+        
+        if success:
+            QMessageBox.information(self, "导出成功", f"数据已导出到:\n{file_path}")
+        else:
+            QMessageBox.critical(self, "导出失败", "导出数据时发生错误，请查看日志")
+    
+    # 23. 冷却水导出
+    def on_cooling_export_clicked(self):
+        """导出冷却水数据"""
+        if not self.selected_batch:
+            QMessageBox.warning(self, "导出失败", "请先选择批次并查询数据")
+            return
+        
+        if not self.current_start_time or not self.current_end_time:
+            QMessageBox.warning(self, "导出失败", "请先查询数据")
+            return
+        
+        # 根据当前选择获取数据
+        if self.cooling_select == "炉皮冷却水累计":
+            data_type = "炉皮冷却水累计"
+            data_list = self.cached_data["shell_water"]
+        else:
+            data_type = "炉盖冷却水累计"
+            data_list = self.cached_data["cover_water"]
+        
+        if not data_list:
+            QMessageBox.warning(self, "导出失败", f"{data_type}数据为空")
+            return
+        
+        # 弹出文件保存对话框
+        default_filename = f"{self.selected_batch}_{data_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出数据",
+            default_filename,
+            "Excel 文件 (*.xlsx)"
+        )
+        
+        if not file_path:
+            return
+        
+        # 导出数据
+        success = self.data_exporter.export_to_excel(
+            file_path,
+            self.selected_batch,
+            self.current_start_time,
+            self.current_end_time,
+            data_type,
+            data_list
+        )
+        
+        if success:
+            QMessageBox.information(self, "导出成功", f"数据已导出到:\n{file_path}")
+        else:
+            QMessageBox.critical(self, "导出失败", "导出数据时发生错误，请查看日志")

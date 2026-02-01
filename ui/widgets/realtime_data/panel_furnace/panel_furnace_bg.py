@@ -36,10 +36,10 @@ class PanelFurnaceBg(QFrame):
     def init_ui(self):
         # 使用普通布局（不使用堆叠布局）
         content_layout = QVBoxLayout(self)
-        content_layout.setContentsMargins(16, 0, 16, 16)  # 顶部 0px，左右 16px，底部 16px
+        content_layout.setContentsMargins(0, 0, 0, 16)  # 顶部 0px，左右 0px，底部 16px
         content_layout.setSpacing(8)
         
-        # 顶部：炉次信息栏
+        # 顶部：炉次信息栏（贴边显示，无左右边距）
         self.batch_info_bar = BarBatchInfo()
         content_layout.addWidget(self.batch_info_bar)
         
@@ -50,7 +50,7 @@ class PanelFurnaceBg(QFrame):
         electrode_container = QWidget()
         electrode_container.setStyleSheet("background: transparent;")
         electrode_layout = QVBoxLayout(electrode_container)
-        electrode_layout.setContentsMargins(0, 0, 0, 0)
+        electrode_layout.setContentsMargins(16, 0, 16, 0)  # 添加左右 16px 边距
         electrode_layout.setSpacing(16)
         
         # 上排：1# 和 2# 电极
@@ -76,6 +76,7 @@ class PanelFurnaceBg(QFrame):
         
         # 底部：功率能耗卡片（右下角）
         bottom_layout = QHBoxLayout()
+        bottom_layout.setContentsMargins(16, 0, 16, 0)  # 添加左右 16px 边距
         bottom_layout.addStretch(1)
         self.power_energy_card = CardPowerEnergy()
         bottom_layout.addWidget(self.power_energy_card)

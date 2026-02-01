@@ -35,7 +35,7 @@ class DropdownTech(QWidget):
         
         # 显示当前值的按钮
         self.button = QPushButton(self.current_value)
-        self.button.setFixedHeight(28)
+        self.button.setFixedHeight(36)
         self.button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.button.clicked.connect(self.show_menu)
         
@@ -57,8 +57,9 @@ class DropdownTech(QWidget):
             QMenu::item {{
                 background: transparent;
                 color: {colors.TEXT_SECONDARY};
-                padding: 6px 16px;
+                padding: 8px 20px;
                 border-radius: 2px;
+                font-size: 15px;
             }}
             QMenu::item:selected {{
                 background: {self.accent_color}33;
@@ -122,9 +123,10 @@ class DropdownTech(QWidget):
                 color: {colors.TEXT_PRIMARY};
                 border: 1px solid {colors.BORDER_MEDIUM};
                 border-radius: 4px;
-                padding: 4px 12px;
+                padding: 6px 16px;
                 text-align: left;
-                font-size: 14px;
+                font-size: 16px;
+                font-weight: 600;
             }}
             QPushButton:hover {{
                 background: {bg_hover};

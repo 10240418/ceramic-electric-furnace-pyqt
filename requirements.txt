@@ -8,6 +8,9 @@ PyQt6-Charts==6.6.0
 # 图表库
 pyqtgraph==0.13.3
 
+# 音频播放
+playsound==1.2.2
+
 # ==================== 后端核心 ====================
 # 数据库
 influxdb-client>=1.38.0
@@ -21,6 +24,9 @@ pyserial>=3.5
 
 # 数据处理
 numpy==1.26.3
+
+# Excel 导出
+openpyxl>=3.1.0
 
 # 配置管理
 pydantic>=2.5.0

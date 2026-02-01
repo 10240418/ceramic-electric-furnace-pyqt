@@ -143,15 +143,35 @@ class LabelBlinkingFade(QLabel):
     # 6. 更新样式
     def update_style(self):
         if not self._is_blinking:
+            # 正常状态：无边框
             color = self._normal_color or self.theme_manager.text_primary()
-            self.setStyleSheet(f"color: {color};")
+            self.setStyleSheet(f"""
+                QLabel {{
+                    color: {color};
+                    border: none;
+                    background: transparent;
+                }}
+            """)
             return
         
+        # 报警状态：有边框并闪烁
         color = self._blink_color or self.theme_manager.glow_red()
         qcolor = QColor(color)
         qcolor.setAlphaF(self._opacity)
         rgba = f"rgba({qcolor.red()}, {qcolor.green()}, {qcolor.blue()}, {self._opacity})"
-        self.setStyleSheet(f"color: {rgba};")
+        
+        # 边框也跟随透明度闪烁
+        border_rgba = f"rgba({qcolor.red()}, {qcolor.green()}, {qcolor.blue()}, {self._opacity})"
+        
+        self.setStyleSheet(f"""
+            QLabel {{
+                color: {rgba};
+                border: 1px solid {border_rgba};
+                border-radius: 4px;
+                background: transparent;
+                padding: 2px 4px;
+            }}
+        """)
     
     # 7. 主题变化时更新
     def on_theme_changed(self):

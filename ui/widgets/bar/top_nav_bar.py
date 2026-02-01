@@ -100,29 +100,29 @@ class TopNavBar(QFrame):
         # 立即更新一次时钟
         self.update_clock()
         
-        layout.addSpacing(8)  # 时钟和状态指示器之间：10px
+        layout.addSpacing(4)  # 时钟和状态指示器之间：4px
         
         # 状态指示器 (PLC, 服务, 数据库)
         self.status_plc = self.create_status_indicator("PLC")
         layout.addWidget(self.status_plc)
         
-        layout.addSpacing(4)  # 状态指示器之间：4px
+        layout.addSpacing(2)  # 状态指示器之间：2px
         
         self.status_service = self.create_status_indicator("服务")
         layout.addWidget(self.status_service)
         
-        layout.addSpacing(6)  # 状态指示器之间：6px
+        layout.addSpacing(2)  # 状态指示器之间：2px
         
         self.status_database = self.create_status_indicator("数据库")
         layout.addWidget(self.status_database)
         
-        layout.addSpacing(2)  # 状态指示器和设置按钮之间：2px
+        layout.addSpacing(0)  # 状态指示器和设置按钮之间：0px
         
         # 设置按钮
         self.settings_button = self.create_settings_button()
         layout.addWidget(self.settings_button)
         
-        layout.addSpacing(2)  # 设置按钮和窗口控制之间：2px
+        layout.addSpacing(4)  # 设置按钮和窗口控制之间：4px
         
         # 窗口控制按钮
         window_controls = self.create_window_controls()

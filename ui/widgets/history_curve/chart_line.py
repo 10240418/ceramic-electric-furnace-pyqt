@@ -6,6 +6,25 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from ui.styles.themes import ThemeManager
+from datetime import datetime
+
+
+class TimeAxisItem(pg.AxisItem):
+    """自定义时间轴"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+    
+    def tickStrings(self, values, scale, spacing):
+        """将时间戳转换为 HH:MM 格式"""
+        strings = []
+        for v in values:
+            try:
+                dt = datetime.fromtimestamp(v)
+                strings.append(dt.strftime('%H:%M'))
+            except:
+                strings.append('')
+        return strings
 
 
 class ChartLine(QWidget):
@@ -37,8 +56,9 @@ class ChartLine(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         
-        # 创建 PyQtGraph 图表
-        self.plot_widget = pg.PlotWidget()
+        # 创建 PyQtGraph 图表（使用自定义时间轴）
+        axis_items = {'bottom': TimeAxisItem(orientation='bottom')}
+        self.plot_widget = pg.PlotWidget(axisItems=axis_items)
         self.plot_widget.setBackground(None)
         self.plot_widget.showGrid(x=False, y=self.show_grid, alpha=0.3)
         
@@ -63,10 +83,57 @@ class ChartLine(QWidget):
         pen = pg.mkPen(color=self.accent_color, width=2)
         self.plot_widget.plot(x_data, y_data, pen=pen, name=label)
     
+    # 3.1. 更新单条曲线数据（带时间轴）
+    def update_data_with_time(self, x_data: list, y_data: list, label: str = "数据"):
+        """更新单条曲线（X轴为时间戳）"""
+        self.plot_widget.clear()
+        
+        if not x_data or not y_data:
+            return
+        
+        # 绘制曲线
+        pen = pg.mkPen(color=self.accent_color, width=2)
+        self.plot_widget.plot(x_data, y_data, pen=pen, name=label)
+    
     # 4. 更新多条曲线数据
     def update_multi_data(self, data_list: list):
         """
         更新多条曲线
+        data_list: [(label, x_data, y_data, color), ...]
+        """
+        self.plot_widget.clear()
+        
+        if not data_list:
+            return
+        
+        colors = self.theme_manager.get_colors()
+        default_colors = [
+            colors.CHART_LINE_1,
+            colors.CHART_LINE_2,
+            colors.CHART_LINE_3,
+            colors.CHART_LINE_4,
+            colors.CHART_LINE_5,
+            colors.CHART_LINE_6,
+        ]
+        
+        for i, data in enumerate(data_list):
+            if len(data) == 3:
+                label, x_data, y_data = data
+                color = default_colors[i % len(default_colors)]
+            else:
+                label, x_data, y_data, color = data
+            
+            if not x_data or not y_data:
+                continue
+            
+            # 绘制曲线
+            pen = pg.mkPen(color=color, width=2)
+            self.plot_widget.plot(x_data, y_data, pen=pen, name=label)
+    
+    # 4.1. 更新多条曲线数据（带时间轴）
+    def update_multi_data_with_time(self, data_list: list):
+        """
+        更新多条曲线（X轴为时间戳）
         data_list: [(label, x_data, y_data, color), ...]
         """
         self.plot_widget.clear()
@@ -141,4 +208,5 @@ class ChartLine(QWidget):
         # 重新绘制数据
         if self.data_series:
             self.update_multi_data(self.data_series)
+
 
