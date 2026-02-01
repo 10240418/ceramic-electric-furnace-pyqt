@@ -84,6 +84,7 @@ _modbus_parser: Optional[ConfigDrivenDB32Parser] = None  # DB32 传感器解析�
 _db1_parser: Optional[ConfigDrivenDB1Parser] = None      # DB1 弧流弧压解析器
 _status_parser: Optional[ModbusStatusParser] = None       # DB30 状态解析器
 _db41_parser: Optional[DataStateParser] = None            # DB41 数据状态解析器
+_db18_parser: Optional['HopperDB18Parser'] = None         # DB18 料仓电气数据解析器
 _furnace_converter: Optional[FurnaceConverter] = None     # 数据转换器
 
 # ============================================================
@@ -110,6 +111,10 @@ _latest_db41_timestamp: Optional[datetime] = None
 # 最新料仓重量缓存 (Modbus RTU)
 _latest_weight_data: Dict[str, Any] = {}
 _latest_weight_timestamp: Optional[datetime] = None
+
+# 最新料仓上限值缓存 (DB18)
+_latest_hopper_upper_limit: float = 4900.0  # 默认4900kg
+_latest_hopper_upper_limit_timestamp: Optional[datetime] = None
 
 # ============================================================
 # 设定值变化检测缓存 (用于智能写入数据库)
@@ -173,7 +178,7 @@ _stats = {
 # ============================================================
 def init_parsers():
     """初始化解析器"""
-    global _modbus_parser, _db1_parser, _status_parser, _db41_parser, _furnace_converter
+    global _modbus_parser, _db1_parser, _status_parser, _db41_parser, _db18_parser, _furnace_converter
     
     if _modbus_parser is None:
         try:
@@ -196,6 +201,14 @@ def init_parsers():
         except Exception as e:
             print(f" DB30 解析器初始化失败: {e}")
     
+    if _db18_parser is None:
+        try:
+            from backend.plc.parser_hopper_db18 import HopperDB18Parser
+            _db18_parser = HopperDB18Parser()
+            print(" DB18 料仓电气数据解析器已初始化")
+        except Exception as e:
+            print(f" DB18 解析器初始化失败: {e}")
+    
     if _db41_parser is None:
         try:
             _db41_parser = DataStateParser()
@@ -212,11 +225,11 @@ def get_parsers():
     """获取解析器实例（供外部调用）
     
     Returns:
-        tuple: (db1_parser, modbus_parser, status_parser, db41_parser)
+        tuple: (db1_parser, modbus_parser, status_parser, db41_parser, db18_parser)
         
     注意: polling_loops_v2.py 使用元组格式调用此函数
     """
-    return _db1_parser, _modbus_parser, _status_parser, _db41_parser
+    return _db1_parser, _modbus_parser, _status_parser, _db41_parser, _db18_parser
 
 
 def get_parsers_dict():
@@ -230,6 +243,7 @@ def get_parsers_dict():
         'db1_parser': _db1_parser,
         'db30_parser': _status_parser,
         'db41_parser': _db41_parser,
+        'db18_parser': _db18_parser,
         'converter': _furnace_converter
     }
 
@@ -256,7 +270,10 @@ def process_modbus_data(raw_data: bytes):
         # 2. 冷却水流量计算 (新增逻辑)
         # ========================================
         from backend.services.cooling_water_calculator import get_cooling_water_calculator
+        from backend.services.batch_service import get_batch_service
+        
         cooling_calc = get_cooling_water_calculator()
+        batch_service = get_batch_service()
         
         # 提取冷却水数据
         # 映射关系:
@@ -279,28 +296,40 @@ def process_modbus_data(raw_data: bytes):
         furnace_shell_pressure = press_1_data.get('pressure', 0.0) if isinstance(press_1_data, dict) else 0.0
         furnace_cover_pressure = press_2_data.get('pressure', 0.0) if isinstance(press_2_data, dict) else 0.0
         
-        # 添加测量数据并获取压差
-        cooling_result = cooling_calc.add_measurement(
-            furnace_cover_flow=furnace_cover_flow,
-            furnace_shell_flow=furnace_shell_flow,
-            furnace_cover_pressure=furnace_cover_pressure,
-            furnace_shell_pressure=furnace_shell_pressure,
-        )
-        
-        # 计算后的压差存入 parsed 供后续使用
-        parsed['filter_pressure_diff'] = {
-            'value': cooling_result['pressure_diff'],
-            'unit': 'kPa'
-        }
-        
-        # 检查是否需要计算累计流量 (每15秒)
-        if cooling_result['should_calc_volume']:
-            volume_result = cooling_calc.calculate_volume_increment()
-            # 更新累计流量到 parsed
-            parsed['furnace_cover_total_volume'] = volume_result['furnace_cover_total']
-            parsed['furnace_shell_total_volume'] = volume_result['furnace_shell_total']
+        # 【修复】只有在运行状态时才添加测量数据和计算累计
+        if batch_service.is_running:
+            # 添加测量数据并获取压差
+            cooling_result = cooling_calc.add_measurement(
+                furnace_cover_flow=furnace_cover_flow,
+                furnace_shell_flow=furnace_shell_flow,
+                furnace_cover_pressure=furnace_cover_pressure,
+                furnace_shell_pressure=furnace_shell_pressure,
+            )
+            
+            # 计算后的压差存入 parsed 供后续使用
+            parsed['filter_pressure_diff'] = {
+                'value': cooling_result['pressure_diff'],
+                'unit': 'kPa'
+            }
+            
+            # 检查是否需要计算累计流量 (每15秒)
+            if cooling_result['should_calc_volume']:
+                volume_result = cooling_calc.calculate_volume_increment()
+                # 更新累计流量到 parsed
+                parsed['furnace_cover_total_volume'] = volume_result['furnace_cover_total']
+                parsed['furnace_shell_total_volume'] = volume_result['furnace_shell_total']
+            else:
+                # 使用缓存的累计值
+                volumes = cooling_calc.get_total_volumes()
+                parsed['furnace_cover_total_volume'] = volumes['furnace_cover']
+                parsed['furnace_shell_total_volume'] = volumes['furnace_shell']
         else:
-            # 使用缓存的累计值
+            # 【修复】终止冶炼后，只计算压差，不累计流量
+            parsed['filter_pressure_diff'] = {
+                'value': furnace_shell_pressure - furnace_cover_pressure,
+                'unit': 'kPa'
+            }
+            # 使用缓存的累计值（不再增加）
             volumes = cooling_calc.get_total_volumes()
             parsed['furnace_cover_total_volume'] = volumes['furnace_cover']
             parsed['furnace_shell_total_volume'] = volumes['furnace_shell']
@@ -353,14 +382,24 @@ def process_modbus_data(raw_data: bytes):
                     'flows': parsed.get('cooling_flows', {}),
                     'pressures': parsed.get('cooling_pressures', {}),
                     'pressure_diff': parsed.get('filter_pressure_diff', {}),
-                    'cover_total': parsed.get('furnace_cover_total_volume', 0.0),
-                    'shell_total': parsed.get('furnace_shell_total_volume', 0.0),
+                    'cover_total': parsed.get('furnace_cover_total_volume', 0.0),  # 炉盖累计流量
+                    'shell_total': parsed.get('furnace_shell_total_volume', 0.0),  # 炉皮累计流量
                 },
                 'hopper': _latest_weight_data.copy() if _latest_weight_data else {},
                 'valve_status': parsed.get('valve_status', {}),
                 'valve_openness': valve_openness_dict,
+                'energy_total': 0.0,  # 占位，后续从功率计算器获取
                 'timestamp': time.time()
             }
+            
+            # 获取最新能耗数据
+            try:
+                from backend.services.power_energy_calculator import get_power_energy_calculator
+                power_calc = get_power_energy_calculator()
+                realtime_power_data = power_calc.get_realtime_data()
+                sensor_data['energy_total'] = realtime_power_data.get('energy_total', 0.0)
+            except Exception as e:
+                pass  # 能耗数据获取失败不影响主流程
             
             # 写入缓存
             data_cache.set_sensor_data(sensor_data)
@@ -446,18 +485,17 @@ def process_arc_data(raw_data: bytes, batch_code: str):
     设定值和死区仅在变化时才写入数据库
     新增: 功率计算和能耗累计
     
+    重要: 无论是否有批次号，都会更新实时缓存（供前端显示）
+          只有有批次号时才写入历史数据库
+    
     Args:
         raw_data: DB1 原始字节数据
-        batch_code: 当前批次号
+        batch_code: 当前批次号（可能为空）
     """
     global _latest_arc_data, _latest_arc_timestamp
     global _prev_setpoints, _prev_deadzone
     
     if not _db1_parser:
-        return
-    
-    # 只有有批次号时才处理数据（断电恢复后 batch_code 存在）
-    if not batch_code:
         return
 
     try:
@@ -521,11 +559,15 @@ def process_arc_data(raw_data: bytes, batch_code: str):
             data_cache = get_data_cache()
             data_bridge = get_data_bridge()
             
-            # 构建弧流数据
+            # 获取最新能耗数据（使用已导入的 get_power_energy_calculator）
+            realtime_power_data = power_calc.get_realtime_data()
+            
+            # 构建弧流数据（包含能耗）
             arc_data = {
                 'arc_current': arc_cache['arc_current'],
                 'arc_voltage': arc_cache['arc_voltage'],
                 'power_total': arc_cache['power_total'],
+                'energy_total': realtime_power_data.get('energy_total', 0.0),  # 添加能耗
                 'setpoints': arc_cache['setpoints'],
                 'manual_deadzone_percent': arc_cache['manual_deadzone_percent'],
                 'timestamp': time.time()
@@ -554,8 +596,10 @@ def process_arc_data(raw_data: bytes, batch_code: str):
         _prev_setpoints = change_result['current_setpoints']
         _prev_deadzone = change_result['current_deadzone']
 
-        # 9: 写入弧流弧压+功率数据到缓存
-        if arc_fields:
+        # ========================================
+        # 9: 写入历史数据库（仅在有批次号时）
+        # ========================================
+        if batch_code and arc_fields:
             point_dict = {
                 'measurement': 'sensor_data',
                 'tags': {
@@ -569,20 +613,24 @@ def process_arc_data(raw_data: bytes, batch_code: str):
             }
             _arc_buffer.append(point_dict)
             
-            # 日志：显示设定值是否有变化
-            setpoint_info = ""
-            if change_result['has_setpoint_change']:
-                setpoint_info = f", 设定值变化: U={setpoints[0]}A V={setpoints[1]}A W={setpoints[2]}A"
-            if change_result['has_deadzone_change']:
-                setpoint_info += f", 死区变化: {arc_data_obj.manual_deadzone_percent}%"
+            # 日志：只在设定值或死区变化时输出
+            # setpoint_info = ""
+            # if change_result['has_setpoint_change']:
+            #     setpoint_info = f", 设定值变化: U={setpoints[0]}A V={setpoints[1]}A W={setpoints[2]}A"
+            # if change_result['has_deadzone_change']:
+            #     setpoint_info += f", 死区变化: {arc_data_obj.manual_deadzone_percent}%"
             
-            print(f" [DB1] 弧流弧压+功率数据已缓存: U相弧流={arc_data_obj.phase_U.current_A}A, "
-                  f"功率={power_result['power_total']:.2f}kW{setpoint_info}")
+            # print(f" [DB1] 弧流弧压+功率数据已缓存: U相弧流={arc_data_obj.phase_U.current_A}A, "
+            #       f"功率={power_result['power_total']:.2f}kW{setpoint_info}")
         
         # ========================================
         # 10. 检查是否需要计算能耗 (每15秒)
         # ========================================
-        if power_result['should_calc_energy']:
+        # 【修复】只有在运行状态且有批次号时才计算能耗
+        from backend.services.batch_service import get_batch_service
+        batch_service_check = get_batch_service()
+        
+        if batch_code and batch_service_check.is_running and power_result['should_calc_energy']:
             energy_result = power_calc.calculate_energy_increment()
             
             # 将能耗数据添加到缓存（批量写入）
@@ -693,18 +741,24 @@ def process_weight_data(
             
             # ========================================
             # 2.1 投料累计器：添加数据点到队列
+            # 【修复】只有在运行状态时才添加数据和计算
             # ========================================
-            feeding_acc = get_feeding_accumulator()
-            feeding_result = feeding_acc.add_measurement(
-                weight_kg=weight_kg,
-                is_discharging=is_discharging,
-                is_requesting=is_requesting
-            )
+            from backend.services.batch_service import get_batch_service
+            batch_service = get_batch_service()
             
-            # 2.2 检查是否需要计算投料 (每30秒)
-            if feeding_result['should_calc']:
-                calc_result = feeding_acc.calculate_feeding()
-                print(f"📊 投料计算完成: 本次新增 {calc_result['total_added']:.1f}kg, 累计 {calc_result['feeding_total']:.1f}kg")
+            feeding_acc = get_feeding_accumulator()
+            
+            if batch_service.is_running:
+                feeding_result = feeding_acc.add_measurement(
+                    weight_kg=weight_kg,
+                    is_discharging=is_discharging,
+                    is_requesting=is_requesting
+                )
+                
+                # 2.2 检查是否需要计算投料 (每30秒)
+                if feeding_result['should_calc']:
+                    calc_result = feeding_acc.calculate_feeding()
+                    # print(f"📊 投料计算完成: 本次新增 {calc_result['total_added']:.1f}kg, 累计 {calc_result['feeding_total']:.1f}kg")
             
             # 更新缓存中的投料总量
             with _data_lock:
@@ -733,22 +787,24 @@ def process_weight_data(
                 pass  # 缓存更新失败不影响主流程
             
             # 2.3 转换为 InfluxDB Point（只存储净重和累计投料量）
-            point_dict = {
-                'measurement': 'sensor_data',
-                'tags': {
-                    'device_type': 'electric_furnace',
-                    'module_type': 'hopper_weight',
-                    'device_id': 'hopper_1',
-                    'batch_code': batch_code
-                },
-                'fields': {
-                    'net_weight': weight_kg,
-                    'feeding_total': feeding_acc.get_feeding_total(),
-                },
-                'time': now
-            }
-            
-            _normal_buffer.append(point_dict)
+            # 【修复】只有在运行状态时才写入数据库
+            if batch_service.is_running:
+                point_dict = {
+                    'measurement': 'sensor_data',
+                    'tags': {
+                        'device_type': 'electric_furnace',
+                        'module_type': 'hopper_weight',
+                        'device_id': 'hopper_1',
+                        'batch_code': batch_code
+                    },
+                    'fields': {
+                        'net_weight': weight_kg,
+                        'feeding_total': feeding_acc.get_feeding_total(),
+                    },
+                    'time': now
+                }
+                
+                _normal_buffer.append(point_dict)
             
     except Exception as e:
         print(f" 处理料仓重量数据失败: {e}")
@@ -762,7 +818,8 @@ def process_weight_data(
 async def flush_arc_buffer():
     """批量写入 DB1 弧流弧压缓存
     
-    注意: 只有在冶炼状态 (is_smelting=True) 时才写入数据库
+    注意: 只有在运行状态 (is_running=True) 时才写入数据库
+    终止冶炼后（PAUSED状态）不写入数据库
     断电恢复后状态为 running，会继续写入数据
     """
     global _stats, _arc_buffer
@@ -770,12 +827,12 @@ async def flush_arc_buffer():
     if not _arc_buffer:
         return
     
-    # 检查批次状态 - 只有冶炼中（running 或 paused）才写数据库
+    # 检查批次状态 - 只有运行中（RUNNING）才写数据库
     from backend.services.batch_service import get_batch_service
     batch_service = get_batch_service()
     
-    if not batch_service.is_smelting:
-        # 未开始冶炼时，清空缓存但不写入
+    if not batch_service.is_running:
+        # 未运行时（IDLE/PAUSED/STOPPED），清空缓存但不写入
         skipped_count = len(_arc_buffer)
         _arc_buffer.clear()
         if skipped_count > 0:
@@ -811,7 +868,8 @@ async def flush_arc_buffer():
 async def flush_normal_buffer():
     """批量写入 DB32/重量缓存
     
-    注意: 只有在冶炼状态 (is_smelting=True) 时才写入数据库
+    注意: 只有在运行状态 (is_running=True) 时才写入数据库
+    终止冶炼后（PAUSED状态）不写入数据库
     断电恢复后状态为 running，会继续写入数据
     """
     global _stats, _normal_buffer
@@ -819,12 +877,12 @@ async def flush_normal_buffer():
     if not _normal_buffer:
         return
     
-    # 检查批次状态 - 只有冶炼中（running 或 paused）才写数据库
+    # 检查批次状态 - 只有运行中（RUNNING）才写数据库
     from backend.services.batch_service import get_batch_service
     batch_service = get_batch_service()
     
-    if not batch_service.is_smelting:
-        # 未开始冶炼时，清空缓存但不写入
+    if not batch_service.is_running:
+        # 未运行时（IDLE/PAUSED/STOPPED），清空缓存但不写入
         skipped_count = len(_normal_buffer)
         _normal_buffer.clear()
         if skipped_count > 0:
@@ -974,3 +1032,47 @@ def update_stats(key: str, value: Any):
     """更新统计信息"""
     global _stats
     _stats[key] = value
+
+
+# ============================================================
+# DB18 料仓电气数据处理模块
+# ============================================================
+def process_hopper_db18_data(raw_data: bytes):
+    """处理 DB18 料仓电气数据
+    
+    主要功能: 解析料仓上限值
+    
+    Args:
+        raw_data: DB18 原始字节数据
+    """
+    global _latest_hopper_upper_limit, _latest_hopper_upper_limit_timestamp
+    
+    if not _db18_parser:
+        return
+    
+    try:
+        # 解析 DB18 数据
+        parsed = _db18_parser.parse(raw_data)
+        
+        # 提取料仓上限值
+        upper_limit = parsed.get('upper_limit', 4900.0)
+        
+        # 更新内存缓存
+        with _data_lock:
+            _latest_hopper_upper_limit = upper_limit
+            _latest_hopper_upper_limit_timestamp = datetime.now()
+        
+    except Exception as e:
+        print(f"处理 DB18 数据失败: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def get_hopper_upper_limit() -> float:
+    """获取料仓上限值
+    
+    Returns:
+        料仓上限值 (kg)
+    """
+    with _data_lock:
+        return _latest_hopper_upper_limit

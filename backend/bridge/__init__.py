@@ -26,6 +26,7 @@ from .data_models import (
     dict_to_sensor_data,
     dict_to_batch_status,
 )
+from .history_query import HistoryQueryService, get_history_query_service
 
 __all__ = [
     # 桥接器（延迟导入）
@@ -33,6 +34,9 @@ __all__ = [
     # 缓存管理器
     "DataCache",
     "get_data_cache",
+    # 历史查询服务
+    "HistoryQueryService",
+    "get_history_query_service",
     # 数据模型
     "ElectrodeData",
     "ArcData",

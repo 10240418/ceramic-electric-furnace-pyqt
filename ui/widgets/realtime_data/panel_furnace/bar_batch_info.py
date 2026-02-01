@@ -60,7 +60,6 @@ class BarBatchInfo(QFrame):
         self.btn_abandon.setObjectName("btnAbandon")
         self.btn_abandon.setFixedSize(100, 36)
         self.btn_abandon.clicked.connect(self.abandon_batch_clicked.emit)
-        self.btn_abandon.setEnabled(False)  # 暂时禁用
         layout.addWidget(self.btn_abandon)
         
         # 开始冶炼按钮

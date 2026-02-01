@@ -32,7 +32,7 @@ class ChartFeedingStats(QFrame):
         main_layout.setSpacing(0)
         
         # 标题
-        title_label = QLabel("投料统计")
+        title_label = QLabel("投料累计(kg)")
         title_label.setObjectName("chartTitle")
         title_label.setFixedHeight(36)
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -44,9 +44,9 @@ class ChartFeedingStats(QFrame):
         self.plot_widget.setBackground(None)
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
         
-        # 设置坐标轴标签
-        self.plot_widget.setLabel('left', '重量', units='kg')
-        self.plot_widget.setLabel('bottom', '时间')
+        # 不设置坐标轴标签（删除左侧和底部的描述）
+        self.plot_widget.setLabel('left', '')
+        self.plot_widget.setLabel('bottom', '')
         
         # 设置坐标轴颜色
         colors = self.theme_manager.get_colors()
@@ -104,7 +104,7 @@ class ChartFeedingStats(QFrame):
         # 转换时间戳为相对秒数
         if len(self.timestamps) > 0:
             base_time = self.timestamps[0]
-            x_data = [(t - base_time).total_seconds() for t in self.timestamps]
+            x_data = [(t - base_time).total_seconds() / 3600.0 for t in self.timestamps]  # 转换为小时
             y_data = self.weights
             
             self.curve.setData(x_data, y_data)
@@ -123,13 +123,21 @@ class ChartFeedingStats(QFrame):
         base_time = self.timestamps[0]
         ticks = []
         
-        # 每隔一定数量的点显示一个时间标签
-        step = max(1, len(self.timestamps) // 5)
+        # 根据数据点数量决定显示多少个标签
+        num_labels = min(8, len(self.timestamps))
+        step = max(1, len(self.timestamps) // num_labels)
         
         for i in range(0, len(self.timestamps), step):
-            seconds = (self.timestamps[i] - base_time).total_seconds()
-            time_str = self.timestamps[i].strftime("%H:%M")
-            ticks.append((seconds, time_str))
+            hours = (self.timestamps[i] - base_time).total_seconds() / 3600.0
+            time_str = self.timestamps[i].strftime("%m-%d %H:%M")
+            ticks.append((hours, time_str))
+        
+        # 添加最后一个点
+        if len(self.timestamps) > 1:
+            last_hours = (self.timestamps[-1] - base_time).total_seconds() / 3600.0
+            last_time_str = self.timestamps[-1].strftime("%m-%d %H:%M")
+            if ticks[-1][0] != last_hours:
+                ticks.append((last_hours, last_time_str))
         
         # 设置自定义刻度
         axis = self.plot_widget.getAxis('bottom')

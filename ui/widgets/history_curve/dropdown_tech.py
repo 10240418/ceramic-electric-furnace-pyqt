@@ -249,7 +249,16 @@ class DropdownMultiSelect(QWidget):
         self.selected_values = [v for v in values if v in self.options]
         self.button.setText(f"已选 {len(self.selected_values)} 项")
     
-    # 7. 应用样式
+    # 7. 设置选项列表
+    def set_options(self, options: list[str]):
+        self.options = options
+        # 过滤掉不存在的选中值
+        self.selected_values = [v for v in self.selected_values if v in options]
+        if not self.selected_values and options:
+            self.selected_values = [options[0]]
+        self.button.setText(f"已选 {len(self.selected_values)} 项")
+    
+    # 8. 应用样式
     def apply_styles(self):
         colors = self.theme_manager.get_colors()
         is_dark = self.theme_manager.is_dark_mode()
@@ -281,7 +290,6 @@ class DropdownMultiSelect(QWidget):
             }}
         """)
     
-    # 8. 主题变化时重新应用样式
+    # 9. 主题变化时重新应用样式
     def on_theme_changed(self):
         self.apply_styles()
-

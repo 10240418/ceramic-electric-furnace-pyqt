@@ -72,7 +72,7 @@ class PLCManager:
         self._max_consecutive_errors: int = 10
         
         # 仅在 DEBUG 模式下打印初始化信息
-        if settings.debug:
+        if settings.app_debug:
             print(f" PLC Manager 初始化: {self._ip}:{self._port} (rack={self._rack}, slot={self._slot})")
     
     def connect(self) -> Tuple[bool, str]:

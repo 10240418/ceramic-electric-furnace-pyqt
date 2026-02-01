@@ -5,8 +5,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QComboBox, QPushButton, QFrame, QSpinBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint
-from PyQt6.QtGui import QIcon, QMouseEvent
+from PyQt6.QtCore import Qt, pyqtSignal
 from datetime import datetime
 from ui.styles.themes import ThemeManager
 from loguru import logger
@@ -24,14 +23,16 @@ class DialogBatchConfig(QDialog):
         self.furnace_number = furnace_number
         self.theme_manager = ThemeManager.instance()
         
-        # 无边框窗口
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setWindowTitle("批次配置")
         self.setModal(True)
-        self.setFixedSize(450, 380)
         
-        # 用于拖动窗口
-        self.drag_position = QPoint()
+        # 设置窗口标志，去除问号按钮
+        self.setWindowFlags(
+            Qt.WindowType.Dialog | 
+            Qt.WindowType.CustomizeWindowHint | 
+            Qt.WindowType.WindowTitleHint |
+            Qt.WindowType.WindowCloseButtonHint
+        )
         
         # 初始化数据
         now = datetime.now()
@@ -43,136 +44,106 @@ class DialogBatchConfig(QDialog):
         self.apply_styles()
         
         # 监听主题变化
-        self.theme_manager.theme_changed.connect(self.apply_styles)
+        self.theme_manager.theme_changed.connect(self.on_theme_changed)
     
     # 2. 初始化 UI
     def init_ui(self):
-        # 主容器（带边框和背景）
-        container = QFrame(self)
-        container.setObjectName("dialogContainer")
-        container.setGeometry(0, 0, 450, 380)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(24, 24, 24, 24)
+        main_layout.setSpacing(20)
         
-        main_layout = QVBoxLayout(container)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-        
-        # 自定义标题栏
-        title_bar = self.create_title_bar()
-        main_layout.addWidget(title_bar)
-        
-        # 内容区域
-        content_frame = QFrame()
-        content_frame.setObjectName("contentFrame")
-        content_layout = QVBoxLayout(content_frame)
-        content_layout.setContentsMargins(30, 20, 30, 20)
-        content_layout.setSpacing(16)
-        
-        # 年份选择
-        self.year_combo = self.create_year_selector()
-        content_layout.addLayout(self.create_field_layout("年份", self.year_combo))
-        
-        # 月份选择
-        self.month_combo = self.create_month_selector()
-        content_layout.addLayout(self.create_field_layout("月份", self.month_combo))
-        
-        # 炉次选择（使用 SpinBox + 按钮）
-        self.batch_spinbox = self.create_batch_selector()
-        content_layout.addLayout(self.create_batch_field_layout())
-        
-        # 批次编号预览
-        self.batch_preview_label = QLabel()
-        self.batch_preview_label.setObjectName("batchPreview")
-        self.batch_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.batch_preview_label.setFixedHeight(50)
-        content_layout.addWidget(self.batch_preview_label)
-        self.update_batch_preview()
-        
-        content_layout.addStretch()
-        
-        # 按钮组
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        
-        btn_cancel = QPushButton("取消")
-        btn_cancel.setObjectName("btnCancel")
-        btn_cancel.setFixedSize(100, 36)
-        btn_cancel.clicked.connect(self.reject)
-        button_layout.addWidget(btn_cancel)
-        
-        btn_confirm = QPushButton("确认")
-        btn_confirm.setObjectName("btnConfirm")
-        btn_confirm.setFixedSize(100, 36)
-        btn_confirm.clicked.connect(self.on_confirm)
-        button_layout.addWidget(btn_confirm)
-        
-        content_layout.addLayout(button_layout)
-        
-        main_layout.addWidget(content_frame)
-    
-    # 3. 创建自定义标题栏
-    def create_title_bar(self) -> QFrame:
-        title_bar = QFrame()
-        title_bar.setObjectName("titleBar")
-        title_bar.setFixedHeight(50)
-        
-        layout = QHBoxLayout(title_bar)
-        layout.setContentsMargins(20, 0, 10, 0)
+        # 顶部：标题
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(12)
         
         # 图标
         icon_label = QLabel("📝")
-        icon_label.setStyleSheet("font-size: 24px;")
-        layout.addWidget(icon_label)
+        icon_label.setStyleSheet("font-size: 28px;")
+        header_layout.addWidget(icon_label)
         
         # 标题
         title_label = QLabel("批次配置")
         title_label.setObjectName("titleLabel")
-        layout.addWidget(title_label)
+        title_label.setFixedHeight(40)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        header_layout.addWidget(title_label)
         
-        layout.addStretch()
+        header_layout.addStretch()
         
-        # 关闭按钮
-        btn_close = QPushButton("✕")
-        btn_close.setObjectName("btnClose")
-        btn_close.setFixedSize(40, 40)
-        btn_close.clicked.connect(self.reject)
-        layout.addWidget(btn_close)
+        main_layout.addLayout(header_layout)
         
-        return title_bar
-    
-    # 4. 鼠标事件（拖动窗口）
-    def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.MouseButton.LeftButton:
-            # 只在标题栏区域允许拖动
-            if event.position().y() < 50:
-                self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-                event.accept()
-    
-    def mouseMoveEvent(self, event: QMouseEvent):
-        if event.buttons() == Qt.MouseButton.LeftButton and not self.drag_position.isNull():
-            self.move(event.globalPosition().toPoint() - self.drag_position)
-            event.accept()
-    
-    def mouseReleaseEvent(self, event: QMouseEvent):
-        self.drag_position = QPoint()
-    
-    # 5. 创建字段布局
-    def create_field_layout(self, label: str, widget) -> QVBoxLayout:
-        layout = QVBoxLayout()
-        layout.setSpacing(8)
+        # 内容区域
+        content_layout = QVBoxLayout()
+        content_layout.setSpacing(20)
         
+        # 年份选择卡片
+        self.year_combo = self.create_year_selector()
+        year_card = self.create_field_card("年份", self.year_combo)
+        content_layout.addWidget(year_card)
+        
+        # 月份选择卡片
+        self.month_combo = self.create_month_selector()
+        month_card = self.create_field_card("月份", self.month_combo)
+        content_layout.addWidget(month_card)
+        
+        # 炉次选择卡片（使用 SpinBox + 按钮）
+        self.batch_spinbox = self.create_batch_selector()
+        batch_card = self.create_batch_field_card()
+        content_layout.addWidget(batch_card)
+        
+        # 批次编号预览卡片
+        preview_card = self.create_preview_card()
+        content_layout.addWidget(preview_card)
+        
+        main_layout.addLayout(content_layout)
+        
+        main_layout.addStretch()
+        
+        # 按钮组
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(12)
+        button_layout.addStretch()
+        
+        btn_cancel = QPushButton("取消")
+        btn_cancel.setObjectName("btnCancel")
+        btn_cancel.setFixedSize(120, 42)
+        btn_cancel.clicked.connect(self.reject)
+        button_layout.addWidget(btn_cancel)
+        
+        btn_confirm = QPushButton("确认开始")
+        btn_confirm.setObjectName("btnConfirm")
+        btn_confirm.setFixedSize(120, 42)
+        btn_confirm.clicked.connect(self.on_confirm)
+        button_layout.addWidget(btn_confirm)
+        
+        main_layout.addLayout(button_layout)
+    
+    # 3. 创建字段卡片
+    def create_field_card(self, label: str, widget) -> QFrame:
+        """创建字段卡片"""
+        card = QFrame()
+        card.setObjectName("fieldCard")
+        
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
+        
+        # 标签
         label_widget = QLabel(label)
         label_widget.setObjectName("fieldLabel")
         layout.addWidget(label_widget)
         
+        # 控件
         layout.addWidget(widget)
         
-        return layout
+        return card
     
-    # 6. 创建年份选择器
+    # 4. 创建年份选择器
     def create_year_selector(self) -> QComboBox:
         combo = QComboBox()
         combo.setObjectName("yearCombo")
-        combo.setFixedHeight(40)
+        combo.setFixedHeight(44)
         
         # 添加年份选项（当前年份 ± 5 年）
         current_year = datetime.now().year
@@ -185,11 +156,11 @@ class DialogBatchConfig(QDialog):
         
         return combo
     
-    # 7. 创建月份选择器
+    # 5. 创建月份选择器
     def create_month_selector(self) -> QComboBox:
         combo = QComboBox()
         combo.setObjectName("monthCombo")
-        combo.setFixedHeight(40)
+        combo.setFixedHeight(44)
         
         # 添加月份选项
         for month in range(1, 13):
@@ -202,11 +173,11 @@ class DialogBatchConfig(QDialog):
         
         return combo
     
-    # 8. 创建炉次选择器（显示两位数）
+    # 6. 创建炉次选择器（显示两位数）
     def create_batch_selector(self) -> QSpinBox:
         spinbox = QSpinBox()
         spinbox.setObjectName("batchSpinBox")
-        spinbox.setFixedHeight(40)
+        spinbox.setFixedHeight(44)
         spinbox.setMinimum(1)
         spinbox.setMaximum(99)
         spinbox.setValue(1)
@@ -224,11 +195,17 @@ class DialogBatchConfig(QDialog):
         
         return spinbox
     
-    # 9. 创建炉次字段布局（带 +1/-1 按钮）
-    def create_batch_field_layout(self) -> QVBoxLayout:
-        layout = QVBoxLayout()
-        layout.setSpacing(8)
+    # 7. 创建炉次字段卡片（带 +1/-1 按钮）
+    def create_batch_field_card(self) -> QFrame:
+        """创建炉次字段卡片"""
+        card = QFrame()
+        card.setObjectName("fieldCard")
         
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
+        
+        # 标签
         label = QLabel("当月第几炉")
         label.setObjectName("fieldLabel")
         layout.addWidget(label)
@@ -239,7 +216,7 @@ class DialogBatchConfig(QDialog):
         
         btn_minus = QPushButton("-1")
         btn_minus.setObjectName("btnMinus")
-        btn_minus.setFixedSize(60, 40)
+        btn_minus.setFixedSize(70, 44)
         btn_minus.clicked.connect(lambda: self.batch_spinbox.setValue(self.batch_spinbox.value() - 1))
         h_layout.addWidget(btn_minus)
         
@@ -247,27 +224,53 @@ class DialogBatchConfig(QDialog):
         
         btn_plus = QPushButton("+1")
         btn_plus.setObjectName("btnPlus")
-        btn_plus.setFixedSize(60, 40)
+        btn_plus.setFixedSize(70, 44)
         btn_plus.clicked.connect(lambda: self.batch_spinbox.setValue(self.batch_spinbox.value() + 1))
         h_layout.addWidget(btn_plus)
         
         layout.addLayout(h_layout)
         
-        return layout
+        return card
     
-    # 10. 年份变化
+    # 8. 创建批次编号预览卡片
+    def create_preview_card(self) -> QFrame:
+        """创建批次编号预览卡片"""
+        card = QFrame()
+        card.setObjectName("previewCard")
+        
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
+        
+        # 标签
+        label = QLabel("批次编号预览")
+        label.setObjectName("previewLabel")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
+        
+        # 批次编号
+        self.batch_preview_label = QLabel()
+        self.batch_preview_label.setObjectName("batchPreview")
+        self.batch_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.batch_preview_label.setFixedHeight(60)
+        layout.addWidget(self.batch_preview_label)
+        self.update_batch_preview()
+        
+        return card
+    
+    # 9. 年份变化
     def on_year_changed(self, index: int):
         self.selected_year = self.year_combo.currentData()
         self.update_batch_preview()
         logger.debug(f"年份变化: {self.selected_year}")
     
-    # 11. 月份变化
+    # 10. 月份变化
     def on_month_changed(self, index: int):
         self.selected_month = self.month_combo.currentData()
         self.update_batch_preview()
         logger.debug(f"月份变化: {self.selected_month}")
     
-    # 12. 炉次变化（更新显示为两位数）
+    # 11. 炉次变化（更新显示为两位数）
     def on_batch_number_changed(self, value: int):
         self.selected_batch_number = value
         # 更新 SpinBox 显示为两位数
@@ -275,12 +278,12 @@ class DialogBatchConfig(QDialog):
         self.update_batch_preview()
         logger.debug(f"炉次变化: {value:02d}")
     
-    # 13. 更新批次编号预览
+    # 12. 更新批次编号预览
     def update_batch_preview(self):
         batch_code = self.generate_batch_code()
-        self.batch_preview_label.setText(f"批次编号: {batch_code}")
+        self.batch_preview_label.setText(batch_code)
     
-    # 14. 生成批次编号
+    # 13. 生成批次编号
     def generate_batch_code(self) -> str:
         """
         生成批次编号
@@ -295,6 +298,24 @@ class DialogBatchConfig(QDialog):
         year_suffix = self.selected_year % 100  # 年份后两位
         batch_code = f"{year_suffix:02d}{self.selected_month:02d}{self.furnace_number:02d}{self.selected_batch_number:02d}"
         return batch_code
+    
+    # 14. 调整窗口大小（50%宽 × 60%高）
+    def showEvent(self, event):
+        """显示事件，调整窗口大小"""
+        super().showEvent(event)
+        
+        # 获取父窗口大小
+        if self.parent():
+            parent_size = self.parent().size()
+            width = int(parent_size.width() * 0.5)
+            height = int(parent_size.height() * 0.6)
+            self.resize(width, height)
+            
+            # 居中显示
+            parent_rect = self.parent().geometry()
+            x = parent_rect.x() + (parent_rect.width() - width) // 2
+            y = parent_rect.y() + (parent_rect.height() - height) // 2
+            self.move(x, y)
     
     # 15. 确认按钮点击
     def on_confirm(self):
@@ -313,54 +334,54 @@ class DialogBatchConfig(QDialog):
         
         self.setStyleSheet(f"""
             QDialog {{
-                background: transparent;
-            }}
-            
-            QFrame#dialogContainer {{
-                background: {colors.BG_DEEP};
-                border: 2px solid {colors.BORDER_GLOW};
-                border-radius: 12px;
-            }}
-            
-            QFrame#titleBar {{
                 background: {colors.BG_DARK};
-                border-bottom: 1px solid {colors.BORDER_GLOW};
-                border-top-left-radius: 10px;
-                border-top-right-radius: 10px;
+                border: 2px solid {colors.BORDER_GLOW};
+                border-radius: 8px;
             }}
             
             QLabel#titleLabel {{
-                color: {colors.TEXT_PRIMARY};
-                font-size: 20px;
-                font-weight: bold;
-            }}
-            
-            QPushButton#btnClose {{
                 background: transparent;
-                color: {colors.TEXT_SECONDARY};
+                color: {colors.TEXT_PRIMARY};
+                font-size: 24px;
+                font-weight: bold;
                 border: none;
-                border-radius: 4px;
-                font-size: 20px;
-                font-weight: bold;
             }}
             
-            QPushButton#btnClose:hover {{
+            QFrame#fieldCard {{
                 background: {colors.BG_LIGHT};
-                color: {colors.TEXT_PRIMARY};
+                border: 1px solid {colors.BORDER_DARK};
+                border-radius: 6px;
             }}
             
-            QPushButton#btnClose:pressed {{
-                background: {colors.BG_MEDIUM};
-            }}
-            
-            QFrame#contentFrame {{
-                background: transparent;
+            QFrame#previewCard {{
+                background: {colors.BG_LIGHT};
+                border: 2px solid {colors.GLOW_PRIMARY};
+                border-radius: 8px;
             }}
             
             QLabel#fieldLabel {{
                 color: {colors.TEXT_SECONDARY};
-                font-size: 16px;
+                font-size: 15px;
+                border: none;
+                background: transparent;
             }}
+            
+            QLabel#previewLabel {{
+                color: {colors.TEXT_SECONDARY};
+                font-size: 14px;
+                border: none;
+                background: transparent;
+            }}
+            
+            QLabel#batchPreview {{
+                color: {colors.GLOW_PRIMARY};
+                font-size: 32px;
+                font-weight: bold;
+                font-family: "Roboto Mono";
+                border: none;
+                background: transparent;
+            }}
+            
             
             QComboBox {{
                 background: {colors.BG_DARK};
@@ -368,8 +389,8 @@ class DialogBatchConfig(QDialog):
                 border: 1px solid {colors.BORDER_DARK};
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 16px;
-                min-height: 40px;
+                font-size: 18px;
+                min-height: 44px;
             }}
             
             QComboBox:hover {{
@@ -403,9 +424,10 @@ class DialogBatchConfig(QDialog):
                 border: 1px solid {colors.BORDER_DARK};
                 border-radius: 6px;
                 padding: 8px 16px;
-                font-size: 24px;
+                font-size: 28px;
                 font-weight: bold;
-                min-height: 40px;
+                font-family: "Roboto Mono";
+                min-height: 44px;
             }}
             
             QSpinBox:hover {{
@@ -434,22 +456,13 @@ class DialogBatchConfig(QDialog):
                 background: {colors.BG_DARK};
             }}
             
-            QLabel#batchPreview {{
-                color: {colors.GLOW_PRIMARY};
-                font-size: 28px;
-                font-weight: bold;
-                background: {colors.BG_DARK};
-                border: 2px solid {colors.GLOW_PRIMARY};
-                border-radius: 8px;
-                padding: 12px;
-            }}
-            
             QPushButton#btnCancel {{
                 background: {colors.BG_MEDIUM};
                 color: {colors.TEXT_SECONDARY};
                 border: 1px solid {colors.BORDER_DARK};
                 border-radius: 6px;
                 font-size: 16px;
+                font-weight: bold;
             }}
             
             QPushButton#btnCancel:hover {{
@@ -474,4 +487,8 @@ class DialogBatchConfig(QDialog):
                 background: {colors.GLOW_PRIMARY}66;
             }}
         """)
+    
+    # 17. 主题变化时重新应用样式
+    def on_theme_changed(self):
+        self.apply_styles()
 

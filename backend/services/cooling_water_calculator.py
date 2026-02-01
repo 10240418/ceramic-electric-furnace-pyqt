@@ -81,8 +81,10 @@ class CoolingWaterCalculator:
         
         # ============================================================
         # 累计流量 (单位: m³) - 按批次重置
-        # 【修改】移除内存缓存，每次计算时从数据库查询最新值
+        # 【修复】恢复内存缓存，用于实时显示
         # ============================================================
+        self._furnace_cover_total: float = 0.0  # 炉盖累计流量 (m³)
+        self._furnace_shell_total: float = 0.0  # 炉皮累计流量 (m³)
         
         # ============================================================
         # 批次信息
@@ -102,7 +104,7 @@ class CoolingWaterCalculator:
     def reset_for_new_batch(self, batch_code: str):
         """重置累计流量 (新批次开始时调用)
         
-        【修改】每次计算时从数据库查询最新值，无需预先恢复
+        【修复】从数据库恢复累计值到内存
         """
         with self._data_lock:
             # 清空队列和计数器
@@ -110,12 +112,18 @@ class CoolingWaterCalculator:
             self._furnace_shell_flow_queue.clear()
             self._poll_count = 0
             self._current_batch_code = batch_code
-            logger.info(f"冷却水计算器已重置 (批次: {batch_code})")
+            
+            # 从数据库恢复累计值到内存
+            latest_cover, latest_shell = self._get_latest_from_database(batch_code)
+            self._furnace_cover_total = latest_cover
+            self._furnace_shell_total = latest_shell
+            
+            logger.info(f"冷却水计算器已重置 (批次: {batch_code}, 恢复: 炉盖={latest_cover:.3f}m³, 炉皮={latest_shell:.3f}m³)")
     
     def _get_latest_from_database(self, batch_code: str) -> tuple[float, float]:
         """从 InfluxDB 查询该批次的最新累计值
         
-        【修改】每次计算时调用此方法获取最新值
+        【修改】使用 max() 而不是 last()，因为累计值是递增的
         
         Returns:
             (furnace_cover_total, furnace_shell_total)
@@ -127,6 +135,7 @@ class CoolingWaterCalculator:
             settings = get_settings()
             influx = get_influxdb_client()
             
+            # 【修改】使用 max() 获取最大累计值（最新值）
             query = f'''
                 from(bucket: "{settings.influx_bucket}")
                     |> range(start: -7d)
@@ -137,7 +146,7 @@ class CoolingWaterCalculator:
                         r["_field"] == "furnace_cover_water_total" or 
                         r["_field"] == "furnace_shell_water_total"
                     )
-                    |> last()
+                    |> max()
             '''
             
             result = influx.query_api().query(query)
@@ -221,6 +230,8 @@ class CoolingWaterCalculator:
     def calculate_volume_increment(self) -> Dict[str, Any]:
         """计算15秒内的流量增量并累加
         
+        【修复】使用内存累计值，不再每次查询数据库
+        
         Returns:
             {
                 'furnace_cover_delta': float,  # 炉盖本次增量 (m³)
@@ -251,26 +262,22 @@ class CoolingWaterCalculator:
                 avg_flow = statistics.mean(recent_flows)
                 shell_delta = avg_flow * (self.CALC_INTERVAL_SEC / 3600)
             
-            # 【修改】从数据库查询最新累计值 + 本次增量
-            latest_cover, latest_shell = self._get_latest_from_database(self._current_batch_code) if self._current_batch_code else (0.0, 0.0)
-            new_cover_total = latest_cover + cover_delta
-            new_shell_total = latest_shell + shell_delta
-            
-            # 【修改】直接写入数据库
-            self._write_to_database(self._current_batch_code, new_cover_total, new_shell_total)
+            # 【修复】使用内存累计值
+            self._furnace_cover_total += cover_delta
+            self._furnace_shell_total += shell_delta
             
             result = {
                 'furnace_cover_delta': cover_delta,
                 'furnace_shell_delta': shell_delta,
-                'furnace_cover_total': new_cover_total,
-                'furnace_shell_total': new_shell_total,
+                'furnace_cover_total': self._furnace_cover_total,
+                'furnace_shell_total': self._furnace_shell_total,
                 'batch_code': self._current_batch_code,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
             }
             
             if cover_delta > 0 or shell_delta > 0:
-                logger.info(f"冷却水累计: 炉盖+{cover_delta:.4f}m³ (DB最新{latest_cover:.3f}m³→{new_cover_total:.3f}m³), "
-                      f"炉皮+{shell_delta:.4f}m³ (DB最新{latest_shell:.3f}m³→{new_shell_total:.3f}m³)")
+                logger.info(f"冷却水累计: 炉盖+{cover_delta:.4f}m³ (累计={self._furnace_cover_total:.3f}m³), "
+                      f"炉皮+{shell_delta:.4f}m³ (累计={self._furnace_shell_total:.3f}m³)")
             
             return result
     
@@ -280,20 +287,17 @@ class CoolingWaterCalculator:
     def get_realtime_data(self) -> Dict[str, Any]:
         """获取实时数据 (供API调用)
         
-        【修改】从数据库查询最新累计值
+        【修复】直接返回内存中的累计值
         """
         with self._data_lock:
-            # 【修改】从数据库查询最新累计值
-            latest_cover, latest_shell = self._get_latest_from_database(self._current_batch_code) if self._current_batch_code else (0.0, 0.0)
-            
             return {
                 'furnace_cover_flow': self._furnace_cover_flow_queue[-1] if self._furnace_cover_flow_queue else 0.0,
                 'furnace_shell_flow': self._furnace_shell_flow_queue[-1] if self._furnace_shell_flow_queue else 0.0,
                 'furnace_cover_pressure': self._furnace_cover_pressure,
                 'furnace_shell_pressure': self._furnace_shell_pressure,
                 'pressure_diff': self._pressure_diff,
-                'furnace_cover_total_volume': latest_cover,
-                'furnace_shell_total_volume': latest_shell,
+                'furnace_cover_total_volume': self._furnace_cover_total,
+                'furnace_shell_total_volume': self._furnace_shell_total,
                 'batch_code': self._current_batch_code,
                 'queue_size': {
                     'cover': len(self._furnace_cover_flow_queue),
@@ -309,64 +313,24 @@ class CoolingWaterCalculator:
     def _write_to_database(self, batch_code: str, cover_total: float, shell_total: float):
         """写入累计流量到 InfluxDB
         
-        【新增】每次计算后直接写入数据库
+        【已废弃】改为由 process_modbus_data 统一批量写入
         
         Args:
             batch_code: 批次号
             cover_total: 炉盖累计流量 (m³)
             shell_total: 炉皮累计流量 (m³)
         """
-        try:
-            from backend.core.influxdb import write_point
-            from datetime import datetime, timezone
-            
-            now = datetime.now(timezone.utc)
-            
-            # 写入炉盖累计
-            write_point(
-                measurement='sensor_data',
-                tags={
-                    'device_type': 'electric_furnace',
-                    'module_type': 'cooling_water_total',
-                    'device_id': 'furnace_1',
-                    'batch_code': batch_code
-                },
-                fields={
-                    'furnace_cover_water_total': cover_total,
-                },
-                timestamp=now
-            )
-            
-            # 写入炉皮累计
-            write_point(
-                measurement='sensor_data',
-                tags={
-                    'device_type': 'electric_furnace',
-                    'module_type': 'cooling_water_total',
-                    'device_id': 'furnace_1',
-                    'batch_code': batch_code
-                },
-                fields={
-                    'furnace_shell_water_total': shell_total,
-                },
-                timestamp=now
-            )
-            
-            logger.info(f"冷却水累计已写入数据库 (批次: {batch_code}): 炉盖={cover_total:.3f}m³, 炉皮={shell_total:.3f}m³")
-                
-        except Exception as e:
-            logger.error(f"写入冷却水累计到数据库失败: {e}")
+        pass  # 不再使用立即写入，改为批量写入
     
     def get_total_volumes(self) -> Dict[str, float]:
         """获取累计流量
         
-        【修改】从数据库查询最新值
+        【修复】直接返回内存中的累计值
         """
         with self._data_lock:
-            latest_cover, latest_shell = self._get_latest_from_database(self._current_batch_code) if self._current_batch_code else (0.0, 0.0)
             return {
-                'furnace_cover': latest_cover,
-                'furnace_shell': latest_shell,
+                'furnace_cover': self._furnace_cover_total,
+                'furnace_shell': self._furnace_shell_total,
             }
 
 

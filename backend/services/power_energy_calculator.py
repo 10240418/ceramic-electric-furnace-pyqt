@@ -83,6 +83,12 @@ class PowerEnergyCalculator:
         self._power_queue: deque = deque(maxlen=self.QUEUE_SIZE)
         
         # ============================================================
+        # 累计能耗 (单位: kWh) - 按批次重置
+        # 【修复】恢复内存缓存，用于实时显示
+        # ============================================================
+        self._energy_total: float = 0.0  # 累计能耗 (kWh)
+        
+        # ============================================================
         # 批次信息
         # ============================================================
         self._current_batch_code: Optional[str] = None
@@ -100,17 +106,24 @@ class PowerEnergyCalculator:
     def reset_for_new_batch(self, batch_code: str):
         """重置累计能耗 (新批次开始时调用)
         
-        每次计算时从数据库查询最新值，无需预先恢复
+        【修复】从数据库恢复累计值到内存
         """
         with self._data_lock:
             # 清空队列和计时器
             self._power_queue.clear()
             self._last_calc_time = None
             self._current_batch_code = batch_code
-            print(f"🆕 功率能耗计算器已重置 (批次: {batch_code})")
+            
+            # 从数据库恢复累计值到内存
+            latest = self._get_latest_from_database(batch_code)
+            self._energy_total = latest.get('energy_total', 0.0)
+            
+            print(f"[NEW] 功率能耗计算器已重置 (批次: {batch_code}, 恢复: {self._energy_total:.2f}kWh)")
     
     def _get_latest_from_database(self, batch_code: str) -> Dict[str, float]:
         """从 InfluxDB 查询该批次的最新能耗累计值
+        
+        【修改】使用 max() 而不是 last()，因为累计值是递增的
         
         Returns:
             {
@@ -124,6 +137,7 @@ class PowerEnergyCalculator:
             settings = get_settings()
             influx = get_influxdb_client()
             
+            # 【修改】使用 max() 获取最大累计值（最新值）
             query = f'''
                 from(bucket: "{settings.influx_bucket}")
                     |> range(start: -7d)
@@ -131,7 +145,7 @@ class PowerEnergyCalculator:
                     |> filter(fn: (r) => r["batch_code"] == "{batch_code}")
                     |> filter(fn: (r) => r["module_type"] == "energy_consumption")
                     |> filter(fn: (r) => r["_field"] == "energy_total")
-                    |> last()
+                    |> max()
             '''
             
             result = influx.query_api().query(query)
@@ -207,6 +221,8 @@ class PowerEnergyCalculator:
                 elapsed = (now - self._last_calc_time).total_seconds()
                 if elapsed >= self.CALC_INTERVAL_SEC:
                     should_calc = True
+                    # 【修复】立即更新计算时间，避免重复触发
+                    self._last_calc_time = now
             
             return {
                 'power_total': power_total,
@@ -236,17 +252,15 @@ class PowerEnergyCalculator:
             }
         """
         with self._data_lock:
-            # 更新计算时间
+            # 【修复】不在这里更新计算时间，由 calculate_power() 统一管理
             now = datetime.now(timezone.utc)
             calc_duration = (now - self._last_calc_time).total_seconds() if self._last_calc_time else 0
-            self._last_calc_time = now
             
             # 检查数据点数量
             if len(self._power_queue) < 2:
-                latest = self._get_latest_from_database(self._current_batch_code) if self._current_batch_code else {}
                 return {
                     'energy_total_delta': 0.0,
-                    'energy_total': latest.get('energy_total', 0.0),
+                    'energy_total': self._energy_total,
                     'calc_duration': calc_duration,
                     'data_points': len(self._power_queue),
                     'message': '数据点不足'
@@ -270,26 +284,23 @@ class PowerEnergyCalculator:
                 energy_total_delta += (p1.power_total + p2.power_total) / 2 * dt_hours
             
             # ========================================
-            # 从数据库查询最新累计值
+            # 【修复】使用内存累计值
             # ========================================
-            latest = self._get_latest_from_database(self._current_batch_code) if self._current_batch_code else {}
-            
-            # 累加
-            new_energy_total = latest.get('energy_total', 0.0) + energy_total_delta
+            self._energy_total += energy_total_delta
             
             # ========================================
             # 返回结果（不立即写入数据库，而是返回给调用者批量写入）
             # ========================================
             result = {
                 'energy_total_delta': energy_total_delta,
-                'energy_total': new_energy_total,
+                'energy_total': self._energy_total,
                 'calc_duration': calc_duration,
                 'data_points': len(data_list),
             }
             
             # 打印日志
-            print(f"⚡ 能耗计算: 本次+{energy_total_delta:.4f}kWh, "
-                  f"累计={new_energy_total:.2f}kWh, "
+            print(f"[ENERGY] 能耗计算: 本次+{energy_total_delta:.4f}kWh, "
+                  f"累计={self._energy_total:.2f}kWh, "
                   f"数据点={len(data_list)}, 时长={calc_duration:.1f}s")
             
             return result
@@ -298,17 +309,17 @@ class PowerEnergyCalculator:
     # 4: 数据获取模块
     # ============================================================
     def get_realtime_data(self) -> Dict[str, Any]:
-        """获取实时数据 (供API调用)"""
+        """获取实时数据 (供API调用)
+        
+        【修复】直接返回内存中的累计值
+        """
         with self._data_lock:
             # 最新功率
             latest_power = self._power_queue[-1] if self._power_queue else None
             
-            # 从数据库查询最新累计值
-            latest_energy = self._get_latest_from_database(self._current_batch_code) if self._current_batch_code else {}
-            
             return {
                 'power_total': latest_power.power_total if latest_power else 0.0,
-                'energy_total': latest_energy.get('energy_total', 0.0),
+                'energy_total': self._energy_total,
                 'timestamp': latest_power.timestamp.isoformat() if latest_power else None,
                 'batch_code': self._current_batch_code,
                 'queue_size': len(self._power_queue),

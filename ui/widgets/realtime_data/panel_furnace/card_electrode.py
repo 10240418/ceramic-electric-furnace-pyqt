@@ -69,7 +69,9 @@ class CardElectrode(QFrame):
             current_a: 弧流（安培）
             voltage_v: 弧压（伏特）
         """
-        self.depth_label.setText(f"深度 {depth_mm:.3f}m")
+        # 深度转换为米（保留3位小数）
+        depth_m = depth_mm / 1000.0
+        self.depth_label.setText(f"深度 {depth_m:.3f}m")
         self.current_label.setText(f"弧流 {current_a:.0f}A")
         self.voltage_label.setText(f"弧压 {voltage_v:.0f}V")
     

@@ -83,6 +83,12 @@ class MainWindow(QMainWindow):
         self.service_manager.start_all()
         logger.info("后端服务已启动")
         
+        # 【测试用】强制切换 DB1 到高速模式 (0.5s)
+        logger.info("切换 DB1 轮询到高速模式 (0.5s)...")
+        from backend.services.polling_loops_v2 import switch_db1_speed
+        switch_db1_speed(high_speed=True)
+        logger.info("DB1 轮询已切换到高速模式 (0.5s)")
+        
     # 2. 连接后端信号
     def connect_backend_signals(self):
         """连接后端数据桥接器的信号"""

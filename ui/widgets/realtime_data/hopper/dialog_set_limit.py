@@ -115,15 +115,37 @@ class DialogSetLimit(QDialog):
                 QMessageBox.warning(self, "警告", "料仓上限必须大于0")
                 return
             
-            # 发射信号
-            self.limit_set.emit(limit_value)
+            if limit_value > 10000:
+                QMessageBox.warning(self, "警告", "料仓上限不能超过10000kg")
+                return
             
-            logger.info(f"料仓上限设置成功: {limit_value} kg")
+            # 调用后端服务写入 PLC
+            from backend.services.input.hopper_input_max import set_hopper_upper_limit
             
-            self.accept()
+            logger.info(f"准备写入料仓上限值: {limit_value} kg")
+            
+            result = set_hopper_upper_limit(limit_value)
+            
+            if result['success']:
+                # 写入成功，发射信号
+                self.limit_set.emit(limit_value)
+                
+                logger.info(f"料仓上限设置成功: {limit_value} kg")
+                
+                QMessageBox.information(self, "成功", result['message'])
+                
+                self.accept()
+            else:
+                # 写入失败，显示错误信息
+                logger.error(f"料仓上限设置失败: {result['message']}")
+                
+                QMessageBox.critical(self, "失败", result['message'])
         
         except ValueError:
             QMessageBox.warning(self, "警告", "请输入有效的数字")
+        except Exception as e:
+            logger.error(f"设置料仓上限异常: {e}", exc_info=True)
+            QMessageBox.critical(self, "错误", f"设置失败: {str(e)}")
     
     # 4. 应用样式
     def apply_styles(self):

@@ -175,6 +175,14 @@ class BatchService:
             feeding_acc.reset_for_new_batch(batch_code)
         except Exception as e:
             print(f" 重置投料累计器失败: {e}")
+        
+        # 重置能耗计算器
+        try:
+            from backend.services.power_energy_calculator import get_power_energy_calculator
+            power_calc = get_power_energy_calculator()
+            power_calc.reset_for_new_batch(batch_code)
+        except Exception as e:
+            print(f" 重置能耗计算器失败: {e}")
     
     def pause(self) -> dict:
         """
@@ -231,6 +239,43 @@ class BatchService:
             "message": f"冶炼已恢复，批次号: {self._batch_code}",
             "batch_code": self._batch_code,
             "total_pause_duration": self._total_pause_duration
+        }
+    
+    def terminate(self) -> dict:
+        """
+        终止冶炼（暂停写入数据库，但保留批次号和状态）
+        
+        与 pause() 的区别：
+        - pause(): 临时暂停，可以恢复
+        - terminate(): 终止冶炼，不再写入数据库，但保留批次信息
+        
+        Returns:
+            {"success": bool, "message": str}
+        """
+        if self._state == SmeltingState.IDLE:
+            return {
+                "success": False,
+                "message": "当前没有进行中的冶炼"
+            }
+        
+        if self._state == SmeltingState.PAUSED:
+            return {
+                "success": False,
+                "message": f"冶炼已终止，批次号: {self._batch_code}"
+            }
+        
+        # 切换到暂停状态（不写数据库）
+        self._state = SmeltingState.PAUSED
+        self._pause_time = datetime.now()
+        
+        # 持久化状态
+        self._save_state_to_file()
+        
+        return {
+            "success": True,
+            "message": f"冶炼已终止，批次号: {self._batch_code}",
+            "batch_code": self._batch_code,
+            "terminate_time": self._pause_time.isoformat()
         }
     
     def stop(self) -> dict:
@@ -349,6 +394,10 @@ class BatchService:
                 print(f"[BatchService] 🔄 断电恢复: 批次={self._batch_code}, 状态=running")
                 print(f"[BatchService]    原状态={saved_state}, 已运行={self.elapsed_seconds:.0f}秒")
                 print(f"[BatchService]     自动恢复为运行状态，继续写入数据")
+                
+                # 【修复】断电恢复时也需要重置累计器，设置批次号
+                if self._batch_code:
+                    self._reset_accumulators(self._batch_code)
             else:
                 # 空闲状态也恢复 last_batch_code（用于续炼判断）
                 self._last_batch_code = state_data.get("last_batch_code")

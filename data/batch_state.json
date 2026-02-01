@@ -1,9 +1,9 @@
 {
-  "state": "running",
-  "batch_code": "26020301",
-  "last_batch_code": "26010301",
-  "start_time": "2026-01-31T16:00:58.554850",
+  "state": "idle",
+  "batch_code": null,
+  "last_batch_code": "26020301",
+  "start_time": null,
   "pause_time": null,
   "total_pause_duration": 0.0,
-  "saved_at": "2026-01-31T16:00:58.554850"
+  "saved_at": "2026-02-01T04:38:45.034926"
 }

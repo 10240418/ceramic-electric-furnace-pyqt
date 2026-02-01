@@ -224,72 +224,78 @@ class CardStatusDb30(QFrame):
         tm = self.theme_manager
         
         self.setStyleSheet(f"""
-            QFrame {{
-                background: {tm.bg_dark()};
-                border: 1px solid {tm.border_dark()};
-                border-radius: 8px;
+            CardStatusDb30 {{
+                background: {tm.card_bg()};
+                border: 1px solid {tm.card_border()};
+                border-radius: 12px;
             }}
             
             /* 头部 */
             QWidget#status_header {{
                 background: {tm.bg_medium()};
-                border-bottom: 1px solid {tm.border_dark()};
-                border-radius: 0px;
+                border: none;
+                border-bottom: 1px solid {tm.border_medium()};
+                border-top-left-radius: 12px;
+                border-top-right-radius: 12px;
             }}
             
             QLabel#header_icon {{
                 color: {tm.glow_cyan()};
+                border: none;
+                background: transparent;
             }}
             
             QLabel#header_title {{
                 color: {tm.text_primary()};
+                border: none;
+                background: transparent;
             }}
             
             /* 统计芯片 */
             QWidget#stat_chip_normal {{
-                background: {tm.glow_green()}19;
-                border: 1px solid {tm.glow_green()}4D;
+                background: rgba(0, 255, 136, 0.1);
+                border: 1px solid rgba(0, 255, 136, 0.3);
                 border-radius: 12px;
             }}
             
             QWidget#stat_chip_error {{
-                background: {tm.glow_red()}19;
-                border: 1px solid {tm.glow_red()}4D;
+                background: rgba(255, 0, 0, 0.1);
+                border: 1px solid rgba(255, 0, 0, 0.3);
                 border-radius: 12px;
             }}
             
             QWidget#stat_chip_total {{
-                background: {tm.glow_cyan()}19;
-                border: 1px solid {tm.glow_cyan()}4D;
+                background: rgba(0, 212, 255, 0.1);
+                border: 1px solid rgba(0, 212, 255, 0.3);
                 border-radius: 12px;
             }}
             
             QLabel#stat_label_normal {{
-                color: {tm.glow_green()}CC;
+                color: {tm.status_success()};
                 border: none;
                 background: transparent;
             }}
             
             QLabel#stat_count_normal {{
-                color: {tm.glow_green()};
+                color: {tm.status_success()};
                 border: none;
                 background: transparent;
             }}
             
             QLabel#stat_label_error {{
-                color: {tm.glow_red()}CC;
+                color: {tm.status_alarm()};
                 border: none;
                 background: transparent;
             }}
             
             QLabel#stat_count_error {{
-                color: {tm.glow_red()};
+                color: {tm.status_alarm()};
                 border: none;
                 background: transparent;
             }}
             
             QLabel#stat_label_total {{
-                color: {tm.glow_cyan()}CC;
+                color: {tm.glow_cyan()};
                 border: none;
                 background: transparent;
             }}
@@ -302,25 +308,30 @@ class CardStatusDb30(QFrame):
             
             /* 设备卡片 */
             QWidget#device_card {{
-                background: {tm.bg_medium()}66;
-                border: 1px solid {tm.border_dark()}33;
-                border-radius: 4px;
+                background: {tm.bg_surface()};
+                border: 1px solid {tm.border_dark()};
+                border-radius: 6px;
+            }}
+            
+            QWidget#device_card:hover {{
+                background: {tm.bg_overlay()};
+                border: 1px solid {tm.border_medium()};
             }}
             
             QLabel#device_index {{
-                color: {tm.text_secondary()};
+                color: {tm.text_tertiary()};
                 border: none;
                 background: transparent;
             }}
             
             QLabel#status_dot_normal {{
-                color: {tm.glow_green()};
+                color: {tm.status_success()};
                 border: none;
                 background: transparent;
             }}
             
             QLabel#status_dot_error {{
-                color: {tm.glow_red()};
+                color: {tm.status_alarm()};
                 border: none;
                 background: transparent;
             }}
@@ -344,27 +355,27 @@ class CardStatusDb30(QFrame):
             }}
             
             QLabel#badge_value_active {{
-                background: {tm.glow_cyan()}33;
+                background: rgba(0, 212, 255, 0.2);
                 color: {tm.glow_cyan()};
                 border: 1px solid {tm.glow_cyan()};
-                border-radius: 2px;
-                padding: 1px 4px;
+                border-radius: 3px;
+                padding: 2px 6px;
             }}
             
             QLabel#badge_value_inactive {{
-                background: {tm.bg_medium()}4D;
-                color: {tm.text_secondary()};
+                background: {tm.bg_medium()};
+                color: {tm.text_muted()};
                 border: 1px solid {tm.border_dark()};
-                border-radius: 2px;
-                padding: 1px 4px;
+                border-radius: 3px;
+                padding: 2px 6px;
             }}
             
             QLabel#badge_value_error {{
-                background: {tm.bg_medium()}4D;
-                color: {tm.glow_red()};
-                border: 1px solid {tm.border_dark()};
-                border-radius: 2px;
-                padding: 1px 4px;
+                background: rgba(255, 0, 0, 0.15);
+                color: {tm.status_alarm()};
+                border: 1px solid {tm.status_alarm()};
+                border-radius: 3px;
+                padding: 2px 6px;
             }}
         """)
 

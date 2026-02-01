@@ -88,7 +88,7 @@ class PageStatus(QWidget):
     def apply_styles(self):
         tm = self.theme_manager
         self.setStyleSheet(f"""
-            QWidget {{
+            PageStatus {{
                 background: {tm.bg_deep()};
             }}
             
@@ -99,23 +99,35 @@ class PageStatus(QWidget):
             
             QScrollBar:vertical {{
                 background: {tm.bg_medium()};
-                width: 8px;
-                border-radius: 4px;
+                width: 10px;
+                border-radius: 5px;
+                margin: 2px;
             }}
             
             QScrollBar::handle:vertical {{
                 background: {tm.border_medium()};
-                border-radius: 4px;
-                min-height: 20px;
+                border-radius: 5px;
+                min-height: 30px;
             }}
             
             QScrollBar::handle:vertical:hover {{
                 background: {tm.border_glow()};
             }}
             
+            QScrollBar::handle:vertical:pressed {{
+                background: {tm.glow_primary()};
+            }}
+            
             QScrollBar::add-line:vertical,
             QScrollBar::sub-line:vertical {{
                 height: 0px;
+                border: none;
+                background: none;
+            }}
+            
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {{
+                background: none;
             }}
         """)
 

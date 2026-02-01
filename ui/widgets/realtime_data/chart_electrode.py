@@ -118,6 +118,17 @@ class ChartElectrode(QWidget):
     
     # 5. 更新数据
     def update_data(self, electrodes: list, deadzone_percent: float = 15.0):
+        """更新电极数据
+        
+        Args:
+            electrodes: 电极数据列表，每个元素包含 name, set_value, actual_value
+                       例如: [
+                           ElectrodeData("1#电极", 5978, 5980),
+                           ElectrodeData("2#电极", 5978, 5975),
+                           ElectrodeData("3#电极", 5978, 5982),
+                       ]
+            deadzone_percent: 死区百分比（默认15%）
+        """
         self.electrodes = electrodes
         self.deadzone_percent = deadzone_percent
         
@@ -127,6 +138,31 @@ class ChartElectrode(QWidget):
             deadzone_label.setText(f"死区: {int(deadzone_percent)}%")
         
         self.chart_widget.update()
+    
+    # 6. 从字典更新数据（便捷方法）
+    def update_from_dict(self, data: dict):
+        """从字典数据更新图表
+        
+        Args:
+            data: 包含弧流数据的字典
+                {
+                    'arc_current': {'U': 5978, 'V': 5980, 'W': 5975},
+                    'setpoints': {'U': 5978, 'V': 5978, 'W': 5978},
+                    'manual_deadzone_percent': 10.0
+                }
+        """
+        arc_current = data.get('arc_current', {})
+        setpoints = data.get('setpoints', {})
+        deadzone = data.get('manual_deadzone_percent', 15.0)
+        
+        # 构建电极数据列表
+        electrodes = [
+            ElectrodeData("1#电极", setpoints.get('U', 0), arc_current.get('U', 0)),
+            ElectrodeData("2#电极", setpoints.get('V', 0), arc_current.get('V', 0)),
+            ElectrodeData("3#电极", setpoints.get('W', 0), arc_current.get('W', 0)),
+        ]
+        
+        self.update_data(electrodes, deadzone)
     
     # 6. 应用样式
     def apply_styles(self):

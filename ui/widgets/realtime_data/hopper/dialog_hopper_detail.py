@@ -10,8 +10,10 @@ from ui.styles.themes import ThemeManager
 from .table_feeding_record import TableFeedingRecord
 from .chart_feeding_stats import ChartFeedingStats
 from .dialog_set_limit import DialogSetLimit
+from backend.bridge.history_query import get_history_query_service
+from backend.bridge.data_cache import DataCache
 from loguru import logger
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 class DialogHopperDetail(QDialog):
@@ -30,6 +32,10 @@ class DialogHopperDetail(QDialog):
         self.hopper_weight = 0.0
         self.upper_limit = 5000.0
         self.is_feeding = False
+        
+        # 历史查询服务
+        self.history_service = get_history_query_service()
+        self.data_cache = DataCache()  # DataCache 使用 __new__ 实现单例，直接实例化即可
         
         self.setWindowTitle("投料详情")
         self.setModal(True)
@@ -54,13 +60,30 @@ class DialogHopperDetail(QDialog):
         main_layout.setContentsMargins(24, 24, 24, 24)
         main_layout.setSpacing(16)
         
-        # 顶部：料仓状态
+        # 顶部：投料详情标题 + 投料状态
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(16)
+        
+        # 左侧：投料详情标题
+        title_label = QLabel("投料详情")
+        title_label.setObjectName("titleLabel")
+        title_label.setFixedHeight(40)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        header_layout.addWidget(title_label)
+        
+        header_layout.addStretch()
+        
+        # 右侧：投料状态（减小宽度，右对齐）
         status_label = QLabel("投料状态: 未投料")
         status_label.setObjectName("statusLabel")
         status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         status_label.setFixedHeight(40)
-        main_layout.addWidget(status_label)
+        status_label.setFixedWidth(200)
+        header_layout.addWidget(status_label)
         self.status_label = status_label
+        
+        main_layout.addLayout(header_layout)
         
         # 三行数据
         data_layout = QHBoxLayout()
@@ -266,22 +289,17 @@ class DialogHopperDetail(QDialog):
             records: 记录列表 [{'timestamp': datetime, 'weight': float}, ...]
         """
         self.feeding_record_table.set_records(records)
-        
-        # 更新图表
-        timestamps = [r['timestamp'] for r in records]
-        weights = [r['weight'] for r in records]
-        self.feeding_stats_chart.set_data(timestamps, weights)
     
-    # 10. 调整窗口大小（60%宽 × 40%高）
+    # 10. 调整窗口大小（78%宽 × 80%高）
     def showEvent(self, event):
-        """显示事件，调整窗口大小"""
+        """显示事件，调整窗口大小并加载历史数据"""
         super().showEvent(event)
         
         # 获取父窗口大小
         if self.parent():
             parent_size = self.parent().size()
-            width = int(parent_size.width() * 0.6)
-            height = int(parent_size.height() * 0.4)
+            width = int(parent_size.width() * 0.78)
+            height = int(parent_size.height() * 0.8)
             self.resize(width, height)
             
             # 居中显示
@@ -289,8 +307,93 @@ class DialogHopperDetail(QDialog):
             x = parent_rect.x() + (parent_rect.width() - width) // 2
             y = parent_rect.y() + (parent_rect.height() - height) // 2
             self.move(x, y)
+        
+        # 加载历史投料数据
+        self.load_feeding_history()
     
-    # 11. 应用样式
+    # 11. 加载历史投料数据
+    def load_feeding_history(self):
+        """从数据库加载当前批次的历史投料数据"""
+        try:
+            # 获取当前批次号（从批次服务中获取）
+            from backend.services.batch_service import get_batch_service
+            batch_service = get_batch_service()
+            batch_code = batch_service.batch_code
+            
+            if not batch_code:
+                logger.warning("未获取到当前批次号，无法加载历史投料数据")
+                return
+            
+            logger.info(f"开始加载批次 {batch_code} 的历史投料数据...")
+            
+            # 查询当前批次的投料累计历史数据（无聚合，原始数据）
+            feeding_data = self.history_service.query_feeding_total_raw(batch_code)
+            
+            if not feeding_data:
+                logger.warning(f"批次 {batch_code} 没有历史投料数据")
+                return
+            
+            logger.info(f"查询到 {len(feeding_data)} 条投料累计数据")
+            
+            # 提取时间和累计值
+            timestamps = [d['time'] for d in feeding_data]
+            cumulative_values = [d['value'] for d in feeding_data]
+            
+            # 更新投料累计曲线
+            self.feeding_stats_chart.set_data(timestamps, cumulative_values)
+            
+            # 计算投料记录（差值法）
+            feeding_records = self.calculate_feeding_records(feeding_data)
+            
+            logger.info(f"计算出 {len(feeding_records)} 条投料记录")
+            
+            # 更新投料记录表
+            self.set_feeding_records(feeding_records)
+            
+        except Exception as e:
+            logger.error(f"加载历史投料数据失败: {e}", exc_info=True)
+    
+    # 12. 计算投料记录（差值法）
+    def calculate_feeding_records(self, feeding_data: list) -> list:
+        """
+        根据投料累计数据计算每次投料记录
+        
+        算法：
+        1. 遍历投料累计数据，计算相邻两点的差值
+        2. 如果差值 > 阈值（如50kg），认为发生了一次投料
+        3. 记录投料时间和投料重量
+        
+        Args:
+            feeding_data: 投料累计数据 [{'time': datetime, 'value': float}, ...]
+            
+        Returns:
+            投料记录列表 [{'timestamp': datetime, 'weight': float}, ...]
+        """
+        if len(feeding_data) < 2:
+            return []
+        
+        records = []
+        threshold = 50.0  # 投料阈值（kg），小于此值的变化忽略
+        
+        for i in range(1, len(feeding_data)):
+            prev_value = feeding_data[i - 1]['value']
+            curr_value = feeding_data[i]['value']
+            curr_time = feeding_data[i]['time']
+            
+            # 计算差值
+            diff = curr_value - prev_value
+            
+            # 如果差值大于阈值，认为发生了投料
+            if diff > threshold:
+                records.append({
+                    'timestamp': curr_time,
+                    'weight': diff
+                })
+                logger.debug(f"检测到投料: 时间={curr_time}, 重量={diff:.1f}kg")
+        
+        return records
+    
+    # 13. 应用样式
     def apply_styles(self):
         colors = self.theme_manager.get_colors()
         
@@ -299,6 +402,14 @@ class DialogHopperDetail(QDialog):
                 background: {colors.BG_DARK};
                 border: 2px solid {colors.BORDER_GLOW};
                 border-radius: 8px;
+            }}
+            
+            QLabel#titleLabel {{
+                background: transparent;
+                color: {colors.TEXT_PRIMARY};
+                font-size: 20px;
+                font-weight: bold;
+                border: none;
             }}
             
             QLabel#statusLabel {{
@@ -357,6 +468,6 @@ class DialogHopperDetail(QDialog):
             }}
         """)
     
-    # 12. 主题变化时重新应用样式
+    # 14. 主题变化时重新应用样式
     def on_theme_changed(self):
         self.apply_styles()

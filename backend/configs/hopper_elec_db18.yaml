@@ -1,0 +1,95 @@
+# ============================================================
+# 电炉上位机 - DB18 料仓电气数据配置
+# 配置文件: WEIGHT_VAR 数据块
+# 适用场景: 料仓重量监控、投料控制
+# ============================================================
+
+# 系统概述
+system:
+  name: 料仓电气数据监控
+  version: "1.0"
+  description: DB18 WEIGHT_VAR 配置 (料仓上限值 + 排料控制)
+
+# ============================================================
+# DB18 - WEIGHT_VAR 数据块定义
+# PLC: CPU 1214C AC/DC/Rly
+# 总大小: 48 bytes (offset 0~47)
+# ============================================================
+# 数据结构概述:
+#   - offset 0-3: 当前料仓重量 (DInt, kg)
+#   - offset 4-7: 本次排料重量 (DInt, kg)
+#   - offset 8-11: 排料结束重量 (DInt, kg)
+#   - offset 12-15: 排料起始重量 (DInt, kg)
+#   - offset 16-39: 保留字段
+#   - offset 40-43: 上料上限值 (DInt, kg) ⭐ 前端显示用
+#   - offset 44-47: 保留字段
+# ============================================================
+
+db18_weight_var:
+  db_block: 18
+  name: "WEIGHT_VAR"
+  total_size: 48  # offset 0 ~ 47
+  
+  # 字段定义列表 (按偏移量顺序)
+  fields:
+    # ----------------------
+    # 当前料仓重量 (DInt 类型, 4 bytes) offset 0-3
+    # ----------------------
+    - name: current_weight
+      offset: 0
+      type: DINT
+      unit: "kg"
+      description: 当前料仓重量
+      conversion:
+        factor: 1.0
+        offset: 0.0
+    
+    # ----------------------
+    # 本次排料重量 (DInt 类型, 4 bytes) offset 4-7
+    # ----------------------
+    - name: discharge_weight
+      offset: 4
+      type: DINT
+      unit: "kg"
+      description: 本次排料重量
+      conversion:
+        factor: 1.0
+        offset: 0.0
+    
+    # ----------------------
+    # 排料结束重量 (DInt 类型, 4 bytes) offset 8-11
+    # ----------------------
+    - name: discharge_end_weight
+      offset: 8
+      type: DINT
+      unit: "kg"
+      description: 排料结束重量
+      conversion:
+        factor: 1.0
+        offset: 0.0
+    
+    # ----------------------
+    # 排料起始重量 (DInt 类型, 4 bytes) offset 12-15
+    # ----------------------
+    - name: discharge_start_weight
+      offset: 12
+      type: DINT
+      unit: "kg"
+      description: 排料起始重量
+      conversion:
+        factor: 1.0
+        offset: 0.0
+    
+    # ----------------------
+    # 上料上限值 (DInt 类型, 4 bytes) offset 40-43 ⭐
+    # ----------------------
+    - name: upper_limit
+      offset: 40
+      type: DINT
+      unit: "kg"
+      description: 上料上限值 (默认4900kg)
+      conversion:
+        factor: 1.0
+        offset: 0.0
+      default: 4900
+

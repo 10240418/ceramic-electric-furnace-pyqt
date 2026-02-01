@@ -174,8 +174,11 @@ class ConfigDrivenDB1Parser:
                     'description': field_def.get('description', '')
                 }
                 
-                # 按类型分组
-                if name.startswith('motor_output'):
+                # 按类型分组（优先判断设定值和死区）
+                if name in ['arc_current_setpoint_U', 'arc_current_setpoint_V', 'arc_current_setpoint_W', 'manual_deadzone_percent']:
+                    # 设定值和死区百分比放入 vw_variables
+                    result['vw_variables'][name] = value
+                elif name.startswith('motor_output'):
                     result['motor_outputs'][name] = value
                 elif name.startswith('arc_current'):
                     result['arc_current'][name] = value
@@ -189,9 +192,6 @@ class ConfigDrivenDB1Parser:
                 elif name.startswith('vfd_current'):
                     result['vfd_current'][name] = value
                 elif name.startswith('Vw'):
-                    result['vw_variables'][name] = value
-                elif name == 'manual_deadzone_percent':
-                    # 手动死区百分比 (offset 48) 加入 vw_variables
                     result['vw_variables'][name] = value
             
             # 计算弧流弧压的组合值 (归一化 × 比例放大)

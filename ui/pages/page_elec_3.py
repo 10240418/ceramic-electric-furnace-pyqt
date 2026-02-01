@@ -189,7 +189,40 @@ class PageElec3(QWidget):
     
     # 5. 创建料仓重量面板
     def create_hopper_panel(self):
+        from PyQt6.QtWidgets import QPushButton
+        from PyQt6.QtCore import Qt
+        
         self.hopper_panel = PanelTech("料仓")
+        
+        # 添加"查看详情"按钮到标题栏右边
+        detail_btn = QPushButton("查看详情")
+        detail_btn.setObjectName("hopperDetailBtn")
+        detail_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        detail_btn.clicked.connect(self.show_hopper_detail)
+        
+        # 按钮样式
+        colors = self.theme_manager.get_colors()
+        detail_btn.setStyleSheet(f"""
+            QPushButton#hopperDetailBtn {{
+                background: {colors.BUTTON_PRIMARY_BG};
+                color: {colors.BUTTON_PRIMARY_TEXT};
+                border: 1px solid {colors.BORDER_GLOW};
+                border-radius: 4px;
+                padding: 6px 16px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton#hopperDetailBtn:hover {{
+                background: {colors.BUTTON_PRIMARY_HOVER};
+                border: 1px solid {colors.GLOW_PRIMARY};
+            }}
+            QPushButton#hopperDetailBtn:pressed {{
+                background: {colors.BG_MEDIUM};
+            }}
+        """)
+        
+        # 将按钮添加到标题栏右边
+        self.hopper_panel.add_header_action(detail_btn)
         
         # 使用 CardData 显示4行数据
         items = [
@@ -220,8 +253,10 @@ class PageElec3(QWidget):
         ]
         
         self.hopper_card = CardData(items)
+        
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
         layout.addWidget(self.hopper_card)
         self.hopper_panel.set_content_layout(layout)
     
@@ -484,6 +519,10 @@ class PageElec3(QWidget):
                 self.mock_data['hopper']['feeding_total'] = hopper.get('feeding_total', 0.0)
                 is_discharging = hopper.get('is_discharging', False)
                 
+                # 从 DB18 读取料仓上限值
+                upper_limit = self.data_cache.get_hopper_upper_limit()
+                self.mock_data['hopper']['upper_limit'] = upper_limit
+                
                 hopper_items = [
                     DataItem(
                         label="投料状态",
@@ -493,7 +532,7 @@ class PageElec3(QWidget):
                     ),
                     DataItem(
                         label="料仓上限",
-                        value=f"{int(self.mock_data['hopper']['upper_limit'])}",
+                        value=f"{int(upper_limit)}",
                         unit="kg",
                         icon="⬆️"
                     ),
@@ -517,10 +556,10 @@ class PageElec3(QWidget):
             # ========================================
             if arc_data:
                 power_total = arc_data.get('power_total', 0.0)
-                self.mock_data['power'] = power_total
+                energy_total = arc_data.get('energy_total', 0.0)  # 从缓存读取能耗
                 
-                # 从缓存读取能耗（能耗每15秒计算一次）
-                # TODO: 需要后端提供能耗数据接口
+                self.mock_data['power'] = power_total
+                self.mock_data['energy'] = energy_total  # 更新能耗
                 
                 self.furnace_panel.update_power_energy(
                     self.mock_data['power'],
@@ -590,29 +629,91 @@ class PageElec3(QWidget):
             logger.error(f"开始冶炼异常: {e}", exc_info=True)
             QMessageBox.critical(self, "错误", f"开始冶炼失败: {e}")
     
-    # 13. 放弃炉次（暂不实现）
+    # 13. 放弃炉次（先停止冶炼，再删除数据）
     def on_abandon_batch(self):
-        """放弃炉次（暂不实现）"""
-        logger.info("点击放弃炉次按钮（暂不实现）")
-        QMessageBox.information(self, "提示", "放弃炉次功能暂未实现")
-    
-    # 14. 终止冶炼（长按3秒触发）
-    def on_terminate_smelting(self):
-        """终止冶炼（长按3秒后触发）"""
-        logger.info("长按3秒，触发终止冶炼")
+        """放弃炉次（先停止冶炼，再删除该批次的所有数据）"""
+        logger.info("点击放弃炉次按钮")
+        
+        # 获取当前批次号
+        batch_code = self.mock_data.get('batch_no', '')
+        if not batch_code:
+            QMessageBox.warning(self, "警告", "当前没有进行中的批次")
+            return
         
         # 二次确认
         reply = QMessageBox.question(
             self,
-            "确认终止",
-            "确定要终止当前冶炼吗？\n这将结束当前批次。",
+            "确认放弃炉次",
+            f"确定要放弃当前炉次吗？\n\n"
+            f"批次号: {batch_code}\n"
+            f"开始时间: {self.mock_data.get('start_time', '')}\n"
+            f"运行时长: {self.mock_data.get('run_duration', '')}\n\n"
+            f"警告: 此操作将删除该批次的所有历史数据，且无法恢复！",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                # 调用后端服务停止冶炼
+                # 1. 删除该批次的所有数据
+                from backend.bridge.history_query import get_history_query_service
+                history_service = get_history_query_service()
+                
+                delete_result = history_service.delete_batch_data(batch_code)
+                
+                if delete_result['success']:
+                    logger.info(f"批次数据已删除: {delete_result['message']}")
+                    
+                    # 2. 停止批次（清除批次状态）
+                    result = self.batch_service.stop()
+                    
+                    if result['success']:
+                        logger.info(f"批次已停止: {result['message']}")
+                    
+                    # 3. 切换 DB1 轮询速度回低速模式 (5s)
+                    from backend.services.polling_loops_v2 import switch_db1_speed
+                    switch_db1_speed(high_speed=False)
+                    logger.info("已切换 DB1 轮询到低速模式 (5s)")
+                    
+                    QMessageBox.information(
+                        self, 
+                        "成功", 
+                        f"批次 {batch_code} 已放弃\n所有历史数据已删除"
+                    )
+                    
+                    # 4. 立即更新批次状态
+                    self.update_batch_status()
+                else:
+                    logger.error(f"删除批次数据失败: {delete_result['message']}")
+                    QMessageBox.critical(
+                        self, 
+                        "错误", 
+                        f"删除数据失败: {delete_result['message']}"
+                    )
+            
+            except Exception as e:
+                logger.error(f"放弃炉次异常: {e}", exc_info=True)
+                QMessageBox.critical(self, "错误", f"放弃炉次失败: {e}")
+    
+    # 14. 终止冶炼（长按3秒触发）
+    def on_terminate_smelting(self):
+        """终止冶炼（长按3秒后触发，结束批次并清除状态）"""
+        logger.info("长按3秒，触发终止冶炼")
+        
+        # 二次确认
+        reply = QMessageBox.question(
+            self,
+            "确认终止",
+            "确定要终止当前冶炼吗？\n\n"
+            "终止后将结束当前批次，停止写入数据库。\n"
+            "批次数据将保留在数据库中。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                # 调用后端服务停止冶炼（结束批次）
                 result = self.batch_service.stop()
                 
                 if result['success']:
@@ -623,7 +724,12 @@ class PageElec3(QWidget):
                     switch_db1_speed(high_speed=False)
                     logger.info("已切换 DB1 轮询到低速模式 (5s)")
                     
-                    QMessageBox.information(self, "成功", result['message'])
+                    QMessageBox.information(
+                        self, 
+                        "成功", 
+                        f"{result['message']}\n\n"
+                        f"批次数据已保留在数据库中"
+                    )
                     
                     # 立即更新批次状态
                     self.update_batch_status()
@@ -662,7 +768,7 @@ class PageElec3(QWidget):
             seconds = int(elapsed_seconds % 60)
             run_duration = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
             
-            # 更新 UI
+            # 更新 UI（is_smelting 包含 RUNNING 和 PAUSED 状态）
             self.furnace_panel.batch_info_bar.set_smelting_state(
                 is_smelting=is_smelting,
                 batch_no=batch_code,
@@ -678,5 +784,101 @@ class PageElec3(QWidget):
         
         except Exception as e:
             logger.error(f"更新批次状态异常: {e}", exc_info=True)
+    
+    # 16. 显示料仓详情弹窗
+    def show_hopper_detail(self):
+        """显示料仓详情弹窗"""
+        from ui.widgets.realtime_data.hopper import DialogHopperDetail
+        from datetime import timedelta
+        import random
+        
+        try:
+            dialog = DialogHopperDetail(self)
+            
+            # 获取当前料仓数据
+            sensor_data = self.data_cache.get_sensor_data()
+            
+            if sensor_data and 'hopper' in sensor_data:
+                hopper_data = sensor_data['hopper']
+                hopper_weight = hopper_data.get('weight', 0.0)
+                feeding_total = hopper_data.get('feeding_total', 0.0)
+                upper_limit = self.mock_data['hopper']['upper_limit']
+                is_feeding = hopper_data.get('is_discharging', False)
+            else:
+                # 使用模拟数据
+                hopper_weight = self.mock_data['hopper']['weight']
+                feeding_total = self.mock_data['hopper']['feeding_total']
+                upper_limit = self.mock_data['hopper']['upper_limit']
+                is_feeding = False
+            
+            # 更新弹窗数据
+            dialog.update_data(
+                feeding_total=feeding_total,
+                hopper_weight=hopper_weight,
+                upper_limit=upper_limit,
+                is_feeding=is_feeding
+            )
+            
+            # 生成模拟投料记录
+            feeding_records = []
+            base_time = datetime.now()
+            for i in range(20):
+                timestamp = base_time - timedelta(hours=i, minutes=random.randint(0, 59))
+                weight = random.uniform(100, 500)
+                feeding_records.append({
+                    'timestamp': timestamp,
+                    'weight': weight
+                })
+            feeding_records.sort(key=lambda x: x['timestamp'], reverse=True)
+            
+            # 设置投料记录
+            dialog.set_feeding_records(feeding_records)
+            
+            # 连接信号
+            dialog.upper_limit_set.connect(self.on_hopper_upper_limit_set)
+            
+            logger.info("打开料仓详情弹窗")
+            dialog.exec()
+        except Exception as e:
+            logger.error(f"显示料仓详情弹窗失败: {e}", exc_info=True)
+    
+    # 17. 料仓上限设置完成
+    def on_hopper_upper_limit_set(self, limit: float):
+        """料仓上限设置完成"""
+        logger.info(f"料仓上限已设置: {limit} kg")
+        
+        # 更新模拟数据
+        self.mock_data['hopper']['upper_limit'] = limit
+        
+        # TODO: 将料仓上限保存到配置文件或数据库
+        
+        # 立即更新料仓面板显示
+        hopper_items = [
+            DataItem(
+                label="投料状态",
+                value="未投料",
+                unit="",
+                icon="📊"
+            ),
+            DataItem(
+                label="料仓上限",
+                value=f"{int(limit)}",
+                unit="kg",
+                icon="⬆️"
+            ),
+            DataItem(
+                label="料仓重量",
+                value=f"{int(self.mock_data['hopper']['weight'])}",
+                unit="kg",
+                icon="⚖️"
+            ),
+            DataItem(
+                label="投料累计",
+                value=f"{int(self.mock_data['hopper']['feeding_total'])}",
+                unit="kg",
+                icon="⬇️"
+            ),
+        ]
+        self.hopper_card.update_items(hopper_items)
     
 
