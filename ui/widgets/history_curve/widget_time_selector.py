@@ -167,7 +167,7 @@ class WidgetTimeSelector(QWidget):
         else:
             bg_normal = colors.BG_LIGHT  # 白色
             bg_hover = f"{self.accent_color}1A"  # 浅绿色半透明
-            selected_text = colors.TEXT_INVERSE  # 白色
+            selected_text = colors.TEXT_ON_PRIMARY  # 深色主题深色，浅色主题白色
         
         # 分隔符样式（无边框，只有文字颜色）
         self.separator1.setStyleSheet(f"""

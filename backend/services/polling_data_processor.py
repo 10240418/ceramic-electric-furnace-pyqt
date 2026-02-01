@@ -73,8 +73,7 @@ from backend.tools.converter_elec_db1_simple import (
     convert_to_influx_fields_with_change_detection,
     ArcDataSimple,
 )
-from backend.services.feeding_accumulator import get_feeding_accumulator
-from backend.services.power_energy_calculator import get_power_energy_calculator
+from backend.services.db1.power_energy_calculator import get_power_energy_calculator
 
 
 # ============================================================
@@ -85,6 +84,7 @@ _db1_parser: Optional[ConfigDrivenDB1Parser] = None      # DB1 弧流弧压解�
 _status_parser: Optional[ModbusStatusParser] = None       # DB30 状态解析器
 _db41_parser: Optional[DataStateParser] = None            # DB41 数据状态解析器
 _db18_parser: Optional['HopperDB18Parser'] = None         # DB18 料仓电气数据解析器
+_db19_parser: Optional['HopperDB19Parser'] = None         # DB19 料仓控制标志解析器
 _furnace_converter: Optional[FurnaceConverter] = None     # 数据转换器
 
 # ============================================================
@@ -115,6 +115,10 @@ _latest_weight_timestamp: Optional[datetime] = None
 # 最新料仓上限值缓存 (DB18)
 _latest_hopper_upper_limit: float = 4900.0  # 默认4900kg
 _latest_hopper_upper_limit_timestamp: Optional[datetime] = None
+
+# 最新料仓 PLC 数据缓存 (DB18 + DB19)
+_latest_hopper_plc_data: Dict[str, Any] = {}
+_latest_hopper_plc_timestamp: Optional[datetime] = None
 
 # ============================================================
 # 设定值变化检测缓存 (用于智能写入数据库)
@@ -189,7 +193,7 @@ _stats = {
 # ============================================================
 def init_parsers():
     """初始化解析器"""
-    global _modbus_parser, _db1_parser, _status_parser, _db41_parser, _db18_parser, _furnace_converter
+    global _modbus_parser, _db1_parser, _status_parser, _db41_parser, _db18_parser, _db19_parser, _furnace_converter
     
     if _modbus_parser is None:
         try:
@@ -220,6 +224,14 @@ def init_parsers():
         except Exception as e:
             print(f" DB18 解析器初始化失败: {e}")
     
+    if _db19_parser is None:
+        try:
+            from backend.plc.parser_hopper_db19 import HopperDB19Parser
+            _db19_parser = HopperDB19Parser()
+            print(" DB19 料仓控制标志解析器已初始化")
+        except Exception as e:
+            print(f" DB19 解析器初始化失败: {e}")
+    
     if _db41_parser is None:
         try:
             _db41_parser = DataStateParser()
@@ -236,11 +248,11 @@ def get_parsers():
     """获取解析器实例（供外部调用）
     
     Returns:
-        tuple: (db1_parser, modbus_parser, status_parser, db41_parser, db18_parser)
+        tuple: (db1_parser, modbus_parser, status_parser, db41_parser, db18_parser, db19_parser)
         
     注意: polling_loops_v2.py 使用元组格式调用此函数
     """
-    return _db1_parser, _modbus_parser, _status_parser, _db41_parser, _db18_parser
+    return _db1_parser, _modbus_parser, _status_parser, _db41_parser, _db18_parser, _db19_parser
 
 
 def get_parsers_dict():
@@ -255,6 +267,7 @@ def get_parsers_dict():
         'db30_parser': _status_parser,
         'db41_parser': _db41_parser,
         'db18_parser': _db18_parser,
+        'db19_parser': _db19_parser,
         'converter': _furnace_converter
     }
 
@@ -282,7 +295,7 @@ def process_modbus_data(raw_data: bytes):
         # ========================================
         # 2. 冷却水流量计算 (新增逻辑)
         # ========================================
-        from backend.services.cooling_water_calculator import get_cooling_water_calculator
+        from backend.services.db32.cooling_water_calculator import get_cooling_water_calculator
         from backend.services.batch_service import get_batch_service
         
         cooling_calc = get_cooling_water_calculator()
@@ -384,7 +397,7 @@ def process_modbus_data(raw_data: bytes):
             data_bridge = get_data_bridge()
             
             # 获取蝶阀开度数据
-            from backend.services.valve_calculator_service import get_all_valve_openness
+            from backend.services.db32.valve_calculator import get_all_valve_openness
             valve_openness_list = get_all_valve_openness()
             valve_openness_dict = {v['valve_id']: v['openness_percent'] for v in valve_openness_list}
             
@@ -407,7 +420,7 @@ def process_modbus_data(raw_data: bytes):
             
             # 获取最新能耗数据
             try:
-                from backend.services.power_energy_calculator import get_power_energy_calculator
+                from backend.services.db1.power_energy_calculator import get_power_energy_calculator
                 power_calc = get_power_energy_calculator()
                 realtime_power_data = power_calc.get_realtime_data()
                 sensor_data['energy_total'] = realtime_power_data.get('energy_total', 0.0)
@@ -427,7 +440,7 @@ def process_modbus_data(raw_data: bytes):
         # 4. 蝶阀开度计算服务 (新增 - 滑动窗口 + 自动校准)
         # ========================================
         try:
-            from backend.services.valve_calculator_service import batch_add_valve_statuses
+            from backend.services.db32.valve_calculator import batch_add_valve_statuses
             valve_status_data = parsed.get('valve_status', {})
             valve_status_byte = valve_status_data.get('raw_byte', 0)
             batch_add_valve_statuses(valve_status_byte, datetime.now(timezone.utc))
@@ -744,129 +757,6 @@ def process_db41_data(raw_data: bytes):
 # ============================================================
 # 3: 批量写入 InfluxDB 模块
 # ============================================================
-
-def process_weight_data(
-    weight_result: Dict[str, Any],
-    batch_code: str,
-    is_discharging: bool = False,
-    is_requesting: bool = False
-):
-    """处理料仓重量数据 (Modbus RTU + PLC 投料信号)
-    
-    优化: 只在投料累计值变化时写入数据库，避免重复写入相同的累计值
-    
-    Args:
-        weight_result: read_hopper_weight() 返回的结果
-        batch_code: 当前批次号
-        is_discharging: %Q3.7 秤排料信号 (True=正在投料)
-        is_requesting: %Q4.0 秤要料信号
-    """
-    global _latest_weight_data, _latest_weight_timestamp, _prev_feeding_total
-
-    try:
-        # 1. 更新内存缓存 (始终更新，即使没有批次号)
-        with _data_lock:
-            _latest_weight_data = weight_result
-            _latest_weight_timestamp = datetime.now()
-        
-        # 只有有批次号时才写入数据库
-        if not batch_code:
-            return
-        
-        # 2. 如果读取成功，处理投料累计
-        if weight_result.get('success') and weight_result.get('weight') is not None:
-            weight_kg = float(weight_result['weight'])
-            now = datetime.now(timezone.utc)
-            
-            # ========================================
-            # 2.1 投料累计器：添加数据点到队列
-            # 【修复】只有在运行状态时才添加数据和计算
-            # ========================================
-            from backend.services.batch_service import get_batch_service
-            batch_service = get_batch_service()
-            
-            feeding_acc = get_feeding_accumulator()
-            
-            if batch_service.is_running:
-                feeding_result = feeding_acc.add_measurement(
-                    weight_kg=weight_kg,
-                    is_discharging=is_discharging,
-                    is_requesting=is_requesting
-                )
-                
-                # 2.2 检查是否需要计算投料 (每30秒)
-                if feeding_result['should_calc']:
-                    calc_result = feeding_acc.calculate_feeding()
-                    # print(f"📊 投料计算完成: 本次新增 {calc_result['total_added']:.1f}kg, 累计 {calc_result['feeding_total']:.1f}kg")
-            
-            # 获取当前累计值
-            current_feeding_total = feeding_acc.get_feeding_total()
-            
-            # 更新缓存中的投料总量
-            with _data_lock:
-                _latest_weight_data['feeding_total'] = current_feeding_total
-                _latest_weight_data['is_discharging'] = is_discharging
-            
-            # ========================================
-            # 2.2.1 更新 DataCache 中的料仓数据
-            # ========================================
-            try:
-                from backend.bridge.data_cache import get_data_cache
-                data_cache = get_data_cache()
-                
-                # 获取最新的传感器数据并更新料仓部分
-                sensor_data = data_cache.get_sensor_data()
-                if sensor_data:
-                    sensor_data['hopper'] = {
-                        'weight': weight_kg,
-                        'feeding_total': current_feeding_total,
-                        'is_discharging': is_discharging,
-                        'is_requesting': is_requesting
-                    }
-                    sensor_data['timestamp'] = datetime.now().timestamp()
-                    data_cache.set_sensor_data(sensor_data)
-            except Exception as cache_err:
-                pass  # 缓存更新失败不影响主流程
-            
-            # ========================================
-            # 2.3 转换为 InfluxDB Point
-            # 【优化】只在投料累计值变化时写入 feeding_total
-            # ========================================
-            if batch_service.is_running:
-                # 检查累计值是否变化（变化超过 0.1kg 才写入）
-                feeding_total_changed = abs(current_feeding_total - _prev_feeding_total) > 0.1
-                
-                # 构建 fields
-                fields = {'net_weight': weight_kg}
-                
-                # 只在累计值变化时添加 feeding_total 字段
-                if feeding_total_changed:
-                    fields['feeding_total'] = current_feeding_total
-                    _prev_feeding_total = current_feeding_total  # 更新上次写入的值
-                
-                point_dict = {
-                    'measurement': 'sensor_data',
-                    'tags': {
-                        'device_type': 'electric_furnace',
-                        'module_type': 'hopper_weight',
-                        'device_id': 'hopper_1',
-                        'batch_code': batch_code
-                    },
-                    'fields': fields,
-                    'time': now
-                }
-                
-                _normal_buffer.append(point_dict)
-            
-    except Exception as e:
-        print(f" 处理料仓重量数据失败: {e}")
-        import traceback
-        traceback.print_exc()
-
-
-# ============================================================
-# 批量写入 InfluxDB
-# ============================================================
 async def flush_arc_buffer():
     """批量写入 DB1 弧流弧压缓存
     
@@ -1128,3 +1018,196 @@ def get_hopper_upper_limit() -> float:
     """
     with _data_lock:
         return _latest_hopper_upper_limit
+
+
+# ============================================================
+# 料仓 PLC 数据处理模块 (DB18 + DB19)
+# ============================================================
+def process_hopper_plc_data(
+    db18_data: bytes,
+    db19_data: bytes,
+    q_data: bytes,
+    i_data: bytes,
+    batch_code: str
+):
+    """处理料仓 PLC 数据 (DB18 + DB19 + Q区 + I区)
+    
+    功能:
+    1. 解析 DB18 (当前重量、本次排料重量、上限值)
+    2. 解析 DB19 (排料重量待读取标志)
+    3. 解析 Q区 (Q3.7 排料信号, Q4.0 要料信号)
+    4. 解析 I区 (I4.6 供料反馈信号)
+    5. 判断料仓状态 (正在上料/排队等待上料/排料中/静止)
+    6. 当排料标志为 True 时，生成投料记录
+    
+    Args:
+        db18_data: DB18 原始字节数据
+        db19_data: DB19 原始字节数据
+        q_data: Q区原始字节数据 (Q3, Q4)
+        i_data: I区原始字节数据 (I4)
+        batch_code: 当前批次号
+    """
+    global _latest_hopper_plc_data, _latest_hopper_plc_timestamp
+    global _latest_hopper_upper_limit, _latest_hopper_upper_limit_timestamp
+    
+    if not _db18_parser or not _db19_parser:
+        return
+    
+    try:
+        # 1. 解析 DB18 数据
+        db18_parsed = _db18_parser.parse(db18_data)
+        current_weight = db18_parsed.get('current_weight', 0.0)
+        discharge_weight = db18_parsed.get('discharge_weight', 0.0)
+        upper_limit = db18_parsed.get('upper_limit', 4900.0)
+        
+        # 2. 解析 DB19 数据
+        db19_parsed = _db19_parser.parse(db19_data)
+        discharge_weight_ready = db19_parsed.get('discharge_weight_ready', False)
+        
+        # 3. 解析 Q区信号
+        is_discharging = False  # Q3.7 秤排料
+        is_requesting = False   # Q4.0 秤要料
+        if q_data and len(q_data) >= 2:
+            is_discharging = bool((q_data[0] >> 7) & 0x01)  # Q3.7
+            is_requesting = bool(q_data[1] & 0x01)          # Q4.0
+        
+        # 4. 解析 I区信号
+        is_feeding_back = False  # I4.6 供料反馈
+        if i_data and len(i_data) >= 1:
+            is_feeding_back = bool((i_data[0] >> 6) & 0x01)  # I4.6
+        
+        # 5. 判断料仓状态
+        hopper_state = _determine_hopper_state(
+            is_discharging=is_discharging,
+            is_requesting=is_requesting,
+            is_feeding_back=is_feeding_back
+        )
+        
+        # 6. 更新内存缓存
+        with _data_lock:
+            _latest_hopper_plc_data = {
+                'current_weight': current_weight,
+                'discharge_weight': discharge_weight,
+                'upper_limit': upper_limit,
+                'discharge_weight_ready': discharge_weight_ready,
+                'is_discharging': is_discharging,
+                'is_requesting': is_requesting,
+                'is_feeding_back': is_feeding_back,
+                'hopper_state': hopper_state,
+                'batch_code': batch_code
+            }
+            _latest_hopper_plc_timestamp = datetime.now()
+            _latest_hopper_upper_limit = upper_limit
+            _latest_hopper_upper_limit_timestamp = datetime.now()
+        
+        # 7. 当排料标志为 True 时，生成投料记录
+        if discharge_weight_ready and discharge_weight > 0 and batch_code:
+            from backend.services.hopper.accumulator import get_feeding_plc_accumulator
+            
+            accumulator = get_feeding_plc_accumulator()
+            result = accumulator.add_feeding_record(
+                discharge_weight=discharge_weight,
+                batch_code=batch_code,
+                current_weight=current_weight,
+                upper_limit=upper_limit
+            )
+            
+            # 检查是否需要批量写入
+            if result['should_flush']:
+                import asyncio
+                asyncio.create_task(accumulator.flush_feeding_records())
+        
+        # 8. 更新 DataCache + 发送信号 DataBridge
+        try:
+            from backend.bridge.data_cache import get_data_cache
+            from backend.bridge.data_bridge import get_data_bridge
+            import time
+            
+            data_cache = get_data_cache()
+            data_bridge = get_data_bridge()
+            
+            # 获取投料累计
+            from backend.services.hopper.accumulator import get_feeding_plc_accumulator
+            accumulator = get_feeding_plc_accumulator()
+            feeding_total = accumulator.get_feeding_total()
+            
+            # 构建料仓数据
+            hopper_data = {
+                'weight': current_weight,
+                'feeding_total': feeding_total,
+                'upper_limit': upper_limit,
+                'state': hopper_state,
+                'is_discharging': is_discharging,
+                'is_requesting': is_requesting,
+                'is_feeding_back': is_feeding_back,
+                'timestamp': time.time()
+            }
+            
+            # 更新传感器数据中的料仓部分
+            sensor_data = data_cache.get_sensor_data()
+            if sensor_data:
+                sensor_data['hopper'] = hopper_data
+                sensor_data['timestamp'] = time.time()
+                data_cache.set_sensor_data(sensor_data)
+                data_bridge.emit_sensor_data(sensor_data)
+        
+        except Exception as bridge_err:
+            logger.error(f"写入 DataCache/DataBridge 失败: {bridge_err}")
+        
+    except Exception as e:
+        logger.error(f"处理料仓 PLC 数据失败: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def _determine_hopper_state(
+    is_discharging: bool,
+    is_requesting: bool,
+    is_feeding_back: bool
+) -> str:
+    """判断料仓状态
+    
+    状态逻辑:
+    1. Q3.7=True -> discharging (排料中)
+    2. Q4.0=True 且 I4.6=True -> feeding (上料中)
+    3. Q4.0=True 且 I4.6=False -> waiting_feed (排队等待上料)
+    4. 全部 False -> idle (静止)
+    
+    Args:
+        is_discharging: Q3.7 秤排料信号
+        is_requesting: Q4.0 秤要料信号
+        is_feeding_back: I4.6 供料反馈信号
+        
+    Returns:
+        'discharging' | 'feeding' | 'waiting_feed' | 'idle'
+    """
+    # 1. 排料中 (Q3.7=True)
+    if is_discharging:
+        return 'discharging'
+    
+    # 2. 上料中 (Q4.0=True 且 I4.6=True)
+    if is_requesting and is_feeding_back:
+        return 'feeding'
+    
+    # 3. 排队等待上料 (Q4.0=True 且 I4.6=False)
+    if is_requesting and not is_feeding_back:
+        return 'waiting_feed'
+    
+    # 4. 静止 (全部 False)
+    return 'idle'
+
+
+def get_latest_hopper_plc_data() -> Dict[str, Any]:
+    """获取最新的料仓 PLC 数据
+    
+    Returns:
+        {
+            'data': dict,
+            'timestamp': str
+        }
+    """
+    with _data_lock:
+        return {
+            'data': _latest_hopper_plc_data.copy() if _latest_hopper_plc_data else {},
+            'timestamp': _latest_hopper_plc_timestamp.isoformat() if _latest_hopper_plc_timestamp else None
+        }

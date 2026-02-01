@@ -23,7 +23,24 @@ class AlarmChecker:
         self._initialized = True
         self.alarm_manager = get_alarm_threshold_manager()
     
-    # 1. 检查数值状态
+    # 1. 检查是否正在记录（有批次号）
+    def is_recording(self) -> bool:
+        """
+        检查是否正在记录（有批次号且正在冶炼）
+        
+        Returns:
+            True: 正在记录，需要报警
+            False: 未记录，不需要报警
+        """
+        try:
+            from backend.services.batch_service import get_batch_service
+            batch_service = get_batch_service()
+            return batch_service.is_smelting
+        except Exception as e:
+            print(f"[AlarmChecker] 检查批次状态失败: {e}")
+            return False
+    
+    # 2. 检查数值状态
     def check_value(self, param_name: str, value: float) -> str:
         """
         检查数值是否超限
@@ -35,8 +52,12 @@ class AlarmChecker:
         Returns:
             'normal': 正常（绿色/白色）
             'warning': 警告（黄色）
-            'alarm': 报警（红色+闪烁）
+            'alarm': 报警（红色+闪烁）- 只有在记录时才返回 alarm
         """
+        # 如果没有开始记录，直接返回 normal（不报警）
+        if not self.is_recording():
+            return 'normal'
+        
         return self.alarm_manager.check_value(param_name, value)
     
     # 2. 获取阈值配置

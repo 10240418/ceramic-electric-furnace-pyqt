@@ -257,6 +257,10 @@ class CardData(QFrame):
         old_has_alarm = self.has_alarm
         self.has_alarm = any(item.get_alarm_status() == 'alarm' for item in items)
         
+        # 只有在"开始记录"时才播放报警声音和闪烁边框
+        if not self._is_recording():
+            self.has_alarm = False
+        
         # 报警声音播放逻辑：
         # 1. 如果从无报警变为有报警，立即播放声音
         # 2. 如果一直处于报警状态，每 10 次更新播放一次（避免频繁播放）
@@ -294,6 +298,16 @@ class CardData(QFrame):
         
         # 更新边框样式
         self.apply_styles()
+    
+    # 4.05 检查是否正在记录
+    def _is_recording(self) -> bool:
+        """检查是否正在记录（有批次号且正在冶炼）"""
+        try:
+            from backend.services.batch_service import get_batch_service
+            batch_service = get_batch_service()
+            return batch_service.is_smelting
+        except Exception as e:
+            return False
     
     # 4.1 重新创建所有组件
     def _recreate_all_items(self):

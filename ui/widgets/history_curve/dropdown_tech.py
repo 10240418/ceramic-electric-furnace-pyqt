@@ -43,6 +43,8 @@ class DropdownTech(QWidget):
     
     # 3. 显示下拉菜单
     def show_menu(self):
+        from PyQt6.QtWidgets import QScrollArea, QVBoxLayout, QFrame
+        
         menu = QMenu(self)
         colors = self.theme_manager.get_colors()
         
@@ -68,6 +70,22 @@ class DropdownTech(QWidget):
             QMenu::item:disabled {{
                 color: {colors.TEXT_DISABLED};
             }}
+            QScrollBar:vertical {{
+                background: {colors.BG_MEDIUM};
+                width: 8px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {colors.BORDER_MEDIUM};
+                border-radius: 4px;
+                min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {self.accent_color};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
         """)
         
         # 添加选项
@@ -76,6 +94,15 @@ class DropdownTech(QWidget):
             if option == self.current_value:
                 action.setEnabled(False)
             action.triggered.connect(lambda checked, opt=option: self.on_option_selected(opt))
+        
+        # 设置最大高度（最多显示10个选项，超过则滚动）
+        max_visible_items = 10
+        item_height = 40
+        max_height = max_visible_items * item_height
+        
+        # 如果选项数量超过最大可见数量，设置固定高度
+        if len(self.options) > max_visible_items:
+            menu.setMaximumHeight(max_height)
         
         # 显示菜单
         menu.exec(self.button.mapToGlobal(self.button.rect().bottomLeft()))
@@ -218,6 +245,22 @@ class DropdownMultiSelect(QWidget):
                 border: 1px solid {colors.BORDER_MEDIUM};
                 border-radius: 2px;
             }}
+            QScrollBar:vertical {{
+                background: {colors.BG_MEDIUM};
+                width: 8px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {colors.BORDER_MEDIUM};
+                border-radius: 4px;
+                min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {self.accent_color};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
         """)
         
         # 添加选项（可勾选）
@@ -226,6 +269,15 @@ class DropdownMultiSelect(QWidget):
             action.setCheckable(True)
             action.setChecked(option in self.selected_values)
             action.triggered.connect(lambda checked, opt=option: self.on_option_toggled(opt, checked))
+        
+        # 设置最大高度（最多显示8个选项，超过则滚动）
+        max_visible_items = 8
+        item_height = 36
+        max_height = max_visible_items * item_height
+        
+        # 如果选项数量超过最大可见数量，设置固定高度
+        if len(self.options) > max_visible_items:
+            menu.setMaximumHeight(max_height)
         
         # 显示菜单
         menu.exec(self.button.mapToGlobal(self.button.rect().bottomLeft()))

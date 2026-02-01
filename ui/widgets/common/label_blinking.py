@@ -29,6 +29,10 @@ class LabelBlinking(QLabel):
     
     # 2. 设置是否闪烁
     def set_blinking(self, enabled: bool):
+        # 只有在"开始记录"时才允许闪烁
+        if enabled and not self._is_recording():
+            enabled = False
+        
         self._is_blinking = enabled
         if enabled:
             self.blink_timer.start()
@@ -36,6 +40,16 @@ class LabelBlinking(QLabel):
             self.blink_timer.stop()
             self._blink_visible = True
             self.update_style()
+    
+    # 2.1 检查是否正在记录
+    def _is_recording(self) -> bool:
+        """检查是否正在记录（有批次号且正在冶炼）"""
+        try:
+            from backend.services.batch_service import get_batch_service
+            batch_service = get_batch_service()
+            return batch_service.is_smelting
+        except Exception as e:
+            return False
     
     # 3. 设置闪烁颜色
     def set_blink_color(self, color: str):
@@ -107,6 +121,10 @@ class LabelBlinkingFade(QLabel):
     
     # 2. 设置是否闪烁
     def set_blinking(self, enabled: bool):
+        # 只有在"开始记录"时才允许闪烁
+        if enabled and not self._is_recording():
+            enabled = False
+        
         self._is_blinking = enabled
         if enabled:
             self.fade_timer.start()
@@ -114,6 +132,16 @@ class LabelBlinkingFade(QLabel):
             self.fade_timer.stop()
             self._opacity = 1.0
             self.update_style()
+    
+    # 2.1 检查是否正在记录
+    def _is_recording(self) -> bool:
+        """检查是否正在记录（有批次号且正在冶炼）"""
+        try:
+            from backend.services.batch_service import get_batch_service
+            batch_service = get_batch_service()
+            return batch_service.is_smelting
+        except Exception as e:
+            return False
     
     # 3. 设置闪烁颜色
     def set_blink_color(self, color: str):

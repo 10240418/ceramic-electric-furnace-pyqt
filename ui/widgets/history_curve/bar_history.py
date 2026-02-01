@@ -145,18 +145,13 @@ class BarHistory(QWidget):
     # 5. 更新历史模式按钮样式
     def update_history_mode_button(self):
         colors = self.theme_manager.get_colors()
-        is_dark = self.theme_manager.is_dark_mode()
         
         if self.is_history_mode:
-            if is_dark:
-                selected_text = colors.GLOW_CYAN
-            else:
-                selected_text = colors.TEXT_INVERSE
-            
+            # 选中状态：使用 TEXT_SELECTED（深色主题青色，浅色主题深绿）
             self.history_mode_btn.setStyleSheet(f"""
                 QPushButton {{
                     background: {colors.GLOW_CYAN}33;
-                    color: {selected_text};
+                    color: {colors.TEXT_SELECTED};
                     border: 1.5px solid {colors.GLOW_CYAN};
                     border-radius: 4px;
                     padding: 6px 16px;
@@ -168,6 +163,9 @@ class BarHistory(QWidget):
                 }}
             """)
         else:
+            # 未选中状态
+            is_dark = self.theme_manager.is_dark_mode()
+            
             if is_dark:
                 bg_normal = f"{colors.BG_LIGHT}4D"
                 bg_hover = f"{colors.BG_LIGHT}80"
@@ -247,21 +245,12 @@ class BarHistory(QWidget):
     # 16. 更新查询按钮样式
     def update_query_button(self):
         colors = self.theme_manager.get_colors()
-        is_dark = self.theme_manager.is_dark_mode()
         
-        if is_dark:
-            bg_normal = colors.GLOW_CYAN
-            bg_hover = f"{colors.GLOW_CYAN}CC"
-            text_color = colors.BG_DARK
-        else:
-            bg_normal = colors.GLOW_CYAN
-            bg_hover = f"{colors.GLOW_CYAN}DD"
-            text_color = colors.TEXT_INVERSE
-        
+        # 查询按钮：主色背景，使用 TEXT_ON_PRIMARY（深色主题深色，浅色主题白色）
         self.query_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {bg_normal};
-                color: {text_color};
+                background: {colors.GLOW_CYAN};
+                color: {colors.TEXT_ON_PRIMARY};
                 border: none;
                 border-radius: 4px;
                 padding: 6px 16px;
@@ -269,7 +258,7 @@ class BarHistory(QWidget):
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background: {bg_hover};
+                background: {colors.GLOW_CYAN}CC;
             }}
             QPushButton:pressed {{
                 background: {colors.GLOW_CYAN}99;

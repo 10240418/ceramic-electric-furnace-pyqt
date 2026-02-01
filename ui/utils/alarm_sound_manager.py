@@ -59,7 +59,14 @@ class AlarmSoundManager:
         """
         播放报警声音（3次）
         如果正在播放，则不重复播放
+        
+        只有在"开始记录"（有批次号）时才播放
         """
+        # 检查是否正在记录
+        if not self._is_recording():
+            print("[INFO] 未开始记录，不播放报警声音")
+            return
+        
         if self.is_playing:
             # 正在播放，不重复播放
             return
@@ -72,6 +79,17 @@ class AlarmSoundManager:
         self.is_playing = True
         thread = threading.Thread(target=self._play_sound_thread, daemon=True)
         thread.start()
+    
+    # 2.1 检查是否正在记录
+    def _is_recording(self) -> bool:
+        """检查是否正在记录（有批次号且正在冶炼）"""
+        try:
+            from backend.services.batch_service import get_batch_service
+            batch_service = get_batch_service()
+            return batch_service.is_smelting
+        except Exception as e:
+            print(f"[ERROR] 检查批次状态失败: {e}")
+            return False
     
     # 3. 播放声音线程
     def _play_sound_thread(self):

@@ -1098,7 +1098,7 @@ class PageSettings(QWidget):
             
             /* 阈值行 */
             QFrame#threshold_row {{
-                background: {tm.bg_medium()};
+                background: {tm.bg_light()};
                 border: 1px solid {tm.border_dark()};
                 border-radius: 6px;
             }}
@@ -1116,7 +1116,7 @@ class PageSettings(QWidget):
             
             /* 阈值输入框 */
             QDoubleSpinBox#threshold_input {{
-                background: {tm.bg_dark()};
+                background: {tm.bg_medium()};
                 color: {tm.text_primary()};
                 border: 1px solid {tm.border_dark()};
                 border-radius: 6px;
@@ -1136,7 +1136,7 @@ class PageSettings(QWidget):
                 width: 20px;
                 height: 20px;
                 border-radius: 3px;
-                background: {tm.bg_medium()};
+                background: {tm.bg_dark()};
             }}
             
             QDoubleSpinBox#threshold_input::up-button:hover,
@@ -1154,7 +1154,7 @@ class PageSettings(QWidget):
                 height: 22px;
                 border: 2px solid {tm.border_dark()};
                 border-radius: 4px;
-                background: {tm.bg_dark()};
+                background: {tm.bg_medium()};
             }}
             
             QCheckBox#enable_checkbox::indicator:hover {{
@@ -1231,7 +1231,7 @@ class PageSettings(QWidget):
             }}
         """)
         
-        # 更新主题按钮样式
+        # 更新主题按钮样式（使用次要背景色）
         if current_theme == Theme.LIGHT:
             # 浅色主题激活
             self.btn_light_theme.setStyleSheet(f"""
@@ -1252,7 +1252,7 @@ class PageSettings(QWidget):
             
             self.btn_dark_theme.setStyleSheet(f"""
                 QPushButton {{
-                    background: {tm.bg_medium()};
+                    background: {tm.bg_dark()};
                     color: {tm.text_primary()};
                     border: 1px solid {tm.border_medium()};
                     border-radius: 6px;
@@ -1261,7 +1261,7 @@ class PageSettings(QWidget):
                 }}
                 
                 QPushButton:hover {{
-                    background: {tm.bg_light()};
+                    background: {tm.bg_medium()};
                     border: 1px solid {tm.border_glow()};
                 }}
             """)
@@ -1285,7 +1285,7 @@ class PageSettings(QWidget):
             
             self.btn_light_theme.setStyleSheet(f"""
                 QPushButton {{
-                    background: {tm.bg_medium()};
+                    background: {tm.bg_dark()};
                     color: {tm.text_primary()};
                     border: 1px solid {tm.border_medium()};
                     border-radius: 6px;
@@ -1294,7 +1294,7 @@ class PageSettings(QWidget):
                 }}
                 
                 QPushButton:hover {{
-                    background: {tm.bg_light()};
+                    background: {tm.bg_medium()};
                     border: 1px solid {tm.border_glow()};
                 }}
             """)

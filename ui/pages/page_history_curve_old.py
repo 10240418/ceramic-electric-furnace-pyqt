@@ -355,19 +355,13 @@ class PageHistoryCurve(QWidget):
     # 7. 更新历史模式按钮样式
     def update_history_mode_button(self):
         colors = self.theme_manager.get_colors()
-        is_dark = self.theme_manager.is_dark_mode()
         
         if self.is_history_mode:
-            # 选中状态
-            if is_dark:
-                selected_text = colors.GLOW_CYAN
-            else:
-                selected_text = colors.TEXT_INVERSE
-            
+            # 选中状态：使用 TEXT_SELECTED
             self.history_mode_btn.setStyleSheet(f"""
                 QPushButton {{
                     background: {colors.GLOW_CYAN}33;
-                    color: {selected_text};
+                    color: {colors.TEXT_SELECTED};
                     border: 1.5px solid {colors.GLOW_CYAN};
                     border-radius: 4px;
                     padding: 6px 16px;
@@ -380,6 +374,9 @@ class PageHistoryCurve(QWidget):
             """)
         else:
             # 未选中状态
+            colors = self.theme_manager.get_colors()
+            is_dark = self.theme_manager.is_dark_mode()
+            
             if is_dark:
                 bg_normal = f"{colors.BG_LIGHT}4D"
                 bg_hover = f"{colors.BG_LIGHT}80"

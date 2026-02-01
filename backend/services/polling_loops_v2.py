@@ -91,7 +91,7 @@ async def _flush_normal_buffer():
 
 async def _flush_valve_buffer():
     """批量写入蝶阀开度缓存"""
-    from backend.services.valve_calculator_service import flush_valve_openness_buffers
+    from backend.services.db32.valve_calculator import flush_valve_openness_buffers
     await flush_valve_openness_buffers()
 
 
@@ -216,19 +216,19 @@ async def _db1_arc_polling_loop(
 async def _db32_sensor_polling_loop(
     parser,
     process_func,
-    weight_reader_func,
     db18_parser,
-    process_db18_func,
+    db19_parser,
+    process_hopper_plc_func,
     is_mock: bool = False
 ):
-    """DB32 传感器 + 料仓重量 + DB18 料仓上限值轮询 (固定 0.5s)
+    """DB32 传感器 + 料仓 PLC 数据轮询 (固定 0.5s)
     
     Args:
         parser: DB32 解析器
         process_func: 数据处理函数
-        weight_reader_func: 料仓重量读取函数
         db18_parser: DB18 解析器
-        process_db18_func: DB18 数据处理函数
+        db19_parser: DB19 解析器
+        process_hopper_plc_func: 料仓 PLC 数据处理函数
         is_mock: 是否 Mock 模式
     """
     global _normal_buffer_count, _normal_batch_size, _valve_buffer_count, _valve_batch_size
@@ -236,7 +236,6 @@ async def _db32_sensor_polling_loop(
     error_count = 0  # 连续错误计数器
     MAX_ERROR_WAIT = 30  # 最大等待时间 (秒)
     interval = 0.5  # 固定 0.5s (1秒2次轮询)
-    weight_poll_interval = 1  # 每次DB32轮询都读重量 (0.5s)
     
     logger.info(f"DB32 传感器轮询已启动 (间隔: {interval}s)")
     
@@ -269,72 +268,76 @@ async def _db32_sensor_polling_loop(
             
             process_func(db32_data)
             
-            # 2. 读取料仓重量 (Modbus RTU) + PLC 投料信号 (%Q3.7, %Q4.0) + DB18 料仓上限值
-            if poll_count % weight_poll_interval == 0:
-                # 2.1 读取投料信号 (Q 区)
-                is_discharging = False
-                is_requesting = False
+            # 2. 读取料仓 PLC 数据 (DB18 + DB19 + Q区 + I区)
+            # 2.1 读取 DB18 (料仓重量、本次排料重量、上限值)
+            db18_data = None
+            if is_mock:
+                from backend.services.polling_data_generator import generate_mock_db18_data
+                db18_data = generate_mock_db18_data()
+            else:
+                try:
+                    if db18_parser:
+                        db18_number = db18_parser.get_db_number()
+                        db18_size = db18_parser.get_total_size()
+                        result = plc.read_db(db18_number, 0, db18_size)
+                        if isinstance(result, (tuple, list)) and len(result) == 2:
+                            db18_data, err = result
+                except Exception as db18_err:
+                    logger.debug(f"读取 DB18 失败: {db18_err}")
                 
-                if is_mock:
-                    # Mock 模式：从模拟器获取投料状态
-                    from backend.services.polling_data_generator import _hopper_simulator
-                    is_discharging = _hopper_simulator.is_discharging()
-                    is_requesting = False  # Mock 模式不模拟请求信号
-                else:
-                    try:
-                        # 读取 Q3 和 Q4 (2字节)
-                        q_data, q_err = plc.read_output_area(3, 2)
-                        if q_data:
-                            # %Q3.7 = Q3 的第7位
-                            is_discharging = bool((q_data[0] >> 7) & 0x01)
-                            # %Q4.0 = Q4 的第0位
-                            is_requesting = bool(q_data[1] & 0x01)
-                    except Exception as q_err:
-                        pass  # 读取失败时使用默认值 False
+            # 2.2 读取 DB19 (排料重量待读取标志)
+            db19_data = None
+            if is_mock:
+                from backend.services.polling_data_generator import generate_mock_db19_data
+                db19_data = generate_mock_db19_data()
+            else:
+                try:
+                    if db19_parser:
+                        db19_number = db19_parser.get_db_number()
+                        db19_size = db19_parser.get_total_size()
+                        result = plc.read_db(db19_number, 0, db19_size)
+                        if isinstance(result, (tuple, list)) and len(result) == 2:
+                            db19_data, err = result
+                except Exception as db19_err:
+                    logger.debug(f"读取 DB19 失败: {db19_err}")
+            
+            # 2.3 读取 Q区信号 (Q3.7 排料, Q4.0 要料)
+            q_data = None
+            if is_mock:
+                from backend.services.polling_data_generator import generate_mock_q_data
+                q_data = generate_mock_q_data()
+            else:
+                try:
+                    q_data, q_err = plc.read_output_area(3, 2)  # 读取 Q3, Q4
+                except Exception as q_err:
+                    logger.debug(f"读取 Q区失败: {q_err}")
+            
+            # 2.4 读取 I区信号 (I4.6 供料反馈)
+            i_data = None
+            if is_mock:
+                from backend.services.polling_data_generator import generate_mock_i_data
+                i_data = generate_mock_i_data()
+            else:
+                try:
+                    i_data, i_err = plc.read_input_area(4, 1)  # 读取 I4
+                except Exception as i_err:
+                    logger.debug(f"读取 I区失败: {i_err}")
                 
-                # 2.2 读取 DB18 料仓上限值
-                if is_mock:
-                    # Mock 模式：使用默认值
-                    pass
-                else:
-                    try:
-                        if db18_parser:
-                            db18_number = db18_parser.get_db_number()
-                            db18_size = db18_parser.get_total_size()
-                            result = plc.read_db(db18_number, 0, db18_size)
-                            if isinstance(result, (tuple, list)) and len(result) == 2:
-                                db18_data, err = result
-                                if db18_data:
-                                    process_db18_func(db18_data)
-                    except Exception as db18_err:
-                        logger.debug(f"读取 DB18 失败: {db18_err}")
-                
-                # 2.3 读取料仓重量
-                if is_mock:
-                    from backend.services.polling_data_generator import generate_mock_weight_data
-                    weight_data = generate_mock_weight_data()
-                else:
-                    weight_data = weight_reader_func(
-                        port=settings.modbus_port,
-                        baudrate=settings.modbus_baudrate
-                    )
-                
-                # 2.4 处理重量数据 (传入投料信号)
-                from backend.services.polling_service import get_batch_info
-                from backend.services.polling_data_processor import process_weight_data
-                batch_info = get_batch_info()
-                current_batch = batch_info.get('batch_code')
-                is_smelting = batch_info.get('is_smelting', False)
-                
-                # 只有在冶炼状态（running 或 paused）时才处理数据
-                # 断电恢复后状态为 running，batch_code 存在，会继续处理数据
-                if is_smelting and current_batch:
-                    process_weight_data(
-                        weight_data,
-                        current_batch,
-                        is_discharging=is_discharging,
-                        is_requesting=is_requesting
-                    )
+            # 2.5 处理料仓 PLC 数据
+            from backend.services.polling_service import get_batch_info
+            batch_info = get_batch_info()
+            current_batch = batch_info.get('batch_code', '')
+            is_smelting = batch_info.get('is_smelting', False)
+            
+            # 只有在冶炼状态时才处理料仓数据
+            if is_smelting and current_batch and db18_data and db19_data:
+                process_hopper_plc_func(
+                    db18_data=db18_data,
+                    db19_data=db19_data,
+                    q_data=q_data,
+                    i_data=i_data,
+                    batch_code=current_batch
+                )
             
             # 批量写入逻辑 (每15秒写一次: 0.5s×30=15s)
             _normal_buffer_count += 1
@@ -482,15 +485,14 @@ async def start_all_polling_loops():
         process_modbus_data,
         process_status_data,
         process_db41_data,
-        process_hopper_db18_data,
+        process_hopper_plc_data,
     )
-    from backend.tools.operation_modbus_weight_reader import read_hopper_weight
     
     # 初始化解析器
     init_parsers()
     
     # 获取解析器
-    db1_parser, modbus_parser, status_parser, db41_parser, db18_parser = get_parsers()
+    db1_parser, modbus_parser, status_parser, db41_parser, db18_parser, db19_parser = get_parsers()
     
     # 重置间隔为默认值 (0.5s)
     _db1_interval = 0.5
@@ -507,6 +509,7 @@ async def start_all_polling_loops():
     logger.info(f"启动三速轮询架构 ({mode_text} 模式)")
     logger.info("   DB1 弧流弧压: 0.5s (固定高速)")
     logger.info("   DB32 传感器: 0.5s (高频, 含冷却水流量计算)")
+    logger.info("   料仓 PLC: 0.5s (DB18+DB19+Q区+I区)")
     logger.info("   DB30/DB41 状态: 5s (固定)")
     logger.info("=" * 60)
     
@@ -520,9 +523,9 @@ async def start_all_polling_loops():
     _db32_task = asyncio.create_task(_db32_sensor_polling_loop(
         modbus_parser,
         process_modbus_data,
-        read_hopper_weight,
         db18_parser,
-        process_hopper_db18_data,
+        db19_parser,
+        process_hopper_plc_data,
         is_mock=is_mock
     ))
     

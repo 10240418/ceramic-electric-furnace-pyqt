@@ -2,12 +2,15 @@
 历史数据查询服务
 """
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from loguru import logger
 from backend.core.influxdb import get_influx_client
 from backend.config import get_settings
 
 settings = get_settings()
+
+# 北京时区 (UTC+8)
+BEIJING_TZ = timezone(timedelta(hours=8))
 
 
 class HistoryQueryService:
@@ -20,7 +23,50 @@ class HistoryQueryService:
         self.query_api = self.client.query_api()
         logger.info("历史数据查询服务已初始化")
     
-    # 2. 获取单例实例
+    # 2. 时间转换工具方法
+    @staticmethod
+    def _utc_to_beijing(utc_time: datetime) -> str:
+        """将 UTC 时间转换为北京时间字符串
+        
+        Args:
+            utc_time: UTC 时间（带时区信息）
+            
+        Returns:
+            北京时间字符串（ISO 格式，如 "2026-02-02T15:30:00+08:00"）
+        """
+        if utc_time is None:
+            return None
+        
+        # 确保是 UTC 时区
+        if utc_time.tzinfo is None:
+            utc_time = utc_time.replace(tzinfo=timezone.utc)
+        
+        # 转换为北京时间
+        beijing_time = utc_time.astimezone(BEIJING_TZ)
+        return beijing_time.isoformat()
+    
+    @staticmethod
+    def _beijing_to_utc(beijing_time: datetime) -> datetime:
+        """将北京时间转换为 UTC 时间
+        
+        Args:
+            beijing_time: 北京时间（可能无时区信息）
+            
+        Returns:
+            UTC 时间（带时区信息）
+        """
+        if beijing_time is None:
+            return None
+        
+        # 如果是 naive datetime（无时区信息），假设为北京时间
+        if beijing_time.tzinfo is None:
+            beijing_time = beijing_time.replace(tzinfo=BEIJING_TZ)
+        
+        # 转换为 UTC
+        utc_time = beijing_time.astimezone(timezone.utc)
+        return utc_time
+    
+    # 3. 获取单例实例
     @classmethod
     def get_instance(cls) -> 'HistoryQueryService':
         if cls._instance is None:
@@ -28,7 +74,7 @@ class HistoryQueryService:
             cls._instance = cls()
         return cls._instance
     
-    # 3. 查询所有批次号列表（按时间倒序）
+    # 4. 查询所有批次号列表（按时间倒序）
     def get_batch_list(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
         查询所有批次号列表
@@ -70,11 +116,11 @@ class HistoryQueryService:
                             if time_val < batches_dict[batch_code]:
                                 batches_dict[batch_code] = time_val
             
-            # 按时间倒序排序
+            # 按时间倒序排序，并转换为北京时间
             batches = [
                 {
                     "batch_code": code,
-                    "start_time": time_val.isoformat() if time_val else None,
+                    "start_time": self._utc_to_beijing(time_val) if time_val else None,
                 }
                 for code, time_val in sorted(batches_dict.items(), key=lambda x: x[1], reverse=True)
             ]
@@ -89,7 +135,7 @@ class HistoryQueryService:
             logger.error(f"查询批次列表失败: {e}")
             return []
     
-    # 4. 查询弧流弧压历史数据
+    # 5. 查询弧流弧压历史数据
     def query_arc_data(
         self, 
         batch_code: str, 
@@ -129,15 +175,16 @@ class HistoryQueryService:
             for table in result:
                 for record in table.records:
                     field = record.get_field()
-                    time = record.get_time().isoformat()
+                    utc_time = record.get_time()
+                    beijing_time = self._utc_to_beijing(utc_time)
                     value = record.get_value()
                     
                     if field.startswith("arc_current_"):
                         phase = field.split("_")[-1]
-                        arc_current[phase].append({"time": time, "value": value})
+                        arc_current[phase].append({"time": beijing_time, "value": value})
                     elif field.startswith("arc_voltage_"):
                         phase = field.split("_")[-1]
-                        arc_voltage[phase].append({"time": time, "value": value})
+                        arc_voltage[phase].append({"time": beijing_time, "value": value})
             
             return {
                 "arc_current": arc_current,
@@ -148,7 +195,7 @@ class HistoryQueryService:
             logger.error(f"查询弧流弧压数据失败: {e}")
             return {"arc_current": {"U": [], "V": [], "W": []}, "arc_voltage": {"U": [], "V": [], "W": []}}
     
-    # 5. 查询电极深度历史数据
+    # 6. 查询电极深度历史数据
     def query_electrode_depth(
         self,
         batch_code: str,
@@ -183,9 +230,10 @@ class HistoryQueryService:
                     sensor = record.values.get("sensor", "")
                     if "electrode_" in sensor:
                         electrode_num = sensor.split("_")[-1]
-                        time = record.get_time().isoformat()
+                        utc_time = record.get_time()
+                        beijing_time = self._utc_to_beijing(utc_time)
                         value = record.get_value()
-                        electrode_depth[electrode_num].append({"time": time, "value": value})
+                        electrode_depth[electrode_num].append({"time": beijing_time, "value": value})
             
             logger.info(f"查询到电极深度数据: 1#{len(electrode_depth['1'])}点, 2#{len(electrode_depth['2'])}点, 3#{len(electrode_depth['3'])}点")
             return electrode_depth
@@ -194,7 +242,7 @@ class HistoryQueryService:
             logger.error(f"查询电极深度数据失败: {e}")
             return {"1": [], "2": [], "3": []}
     
-    # 6. 查询功率能耗历史数据
+    # 7. 查询功率能耗历史数据
     def query_power_energy(
         self,
         batch_code: str,
@@ -228,13 +276,14 @@ class HistoryQueryService:
             for table in result:
                 for record in table.records:
                     field = record.get_field()
-                    time = record.get_time().isoformat()
+                    utc_time = record.get_time()
+                    beijing_time = self._utc_to_beijing(utc_time)
                     value = record.get_value()
                     
                     if field == "power_total":
-                        power.append({"time": time, "value": value})
+                        power.append({"time": beijing_time, "value": value})
                     elif field == "energy_total":
-                        energy.append({"time": time, "value": value})
+                        energy.append({"time": beijing_time, "value": value})
             
             logger.info(f"查询到功率能耗数据: 功率{len(power)}点, 能耗{len(energy)}点")
             return {"power": power, "energy": energy}
@@ -243,7 +292,7 @@ class HistoryQueryService:
             logger.error(f"查询功率能耗数据失败: {e}")
             return {"power": [], "energy": []}
     
-    # 7. 查询料仓历史数据
+    # 8. 查询料仓历史数据
     def query_hopper_data(
         self,
         batch_code: str,
@@ -255,19 +304,21 @@ class HistoryQueryService:
         查询料仓历史数据
         
         Returns:
-            包含 net_weight 和 feeding_total 的字典
+            包含 feeding_total 的字典
         """
         try:
             time_filter = self._build_time_filter(batch_code, start_time, end_time)
             
-            # 查询投料累计
+            # 查询投料累计 (使用新标签格式)
             query_feeding = f'''
             from(bucket: "{settings.influx_bucket}")
               {time_filter}
               |> filter(fn: (r) => r["_measurement"] == "sensor_data")
               |> filter(fn: (r) => r["batch_code"] == "{batch_code}")
+              |> filter(fn: (r) => r["module_type"] == "feeding")
+              |> filter(fn: (r) => r["device_type"] == "hopper")
               |> filter(fn: (r) => r["_field"] == "feeding_total")
-              |> aggregateWindow(every: {interval}, fn: mean, createEmpty: false)
+              |> aggregateWindow(every: {interval}, fn: last, createEmpty: false)
             '''
             
             result = self.query_api.query(query_feeding)
@@ -276,18 +327,19 @@ class HistoryQueryService:
             
             for table in result:
                 for record in table.records:
-                    time = record.get_time().isoformat()
+                    utc_time = record.get_time()
+                    beijing_time = self._utc_to_beijing(utc_time)
                     value = record.get_value()
-                    feeding_total.append({"time": time, "value": value})
+                    feeding_total.append({"time": beijing_time, "value": value})
             
             logger.info(f"查询到料仓数据: 投料累计{len(feeding_total)}点")
-            return {"net_weight": [], "feeding_total": feeding_total}
+            return {"feeding_total": feeding_total}
             
         except Exception as e:
             logger.error(f"查询料仓数据失败: {e}")
-            return {"net_weight": [], "feeding_total": []}
+            return {"feeding_total": []}
     
-    # 8. 查询冷却水历史数据
+    # 9. 查询冷却水历史数据
     def query_cooling_water(
         self,
         batch_code: str,
@@ -321,13 +373,14 @@ class HistoryQueryService:
             for table in result:
                 for record in table.records:
                     field = record.get_field()
-                    time = record.get_time().isoformat()
+                    utc_time = record.get_time()
+                    beijing_time = self._utc_to_beijing(utc_time)
                     value = record.get_value()
                     
                     if field == "furnace_shell_water_total":
-                        shell_water.append({"time": time, "value": value})
+                        shell_water.append({"time": beijing_time, "value": value})
                     elif field == "furnace_cover_water_total":
-                        cover_water.append({"time": time, "value": value})
+                        cover_water.append({"time": beijing_time, "value": value})
             
             logger.info(f"查询到冷却水数据: 炉皮{len(shell_water)}点, 炉盖{len(cover_water)}点")
             return {"shell_water": shell_water, "cover_water": cover_water}
@@ -336,7 +389,68 @@ class HistoryQueryService:
             logger.error(f"查询冷却水数据失败: {e}")
             return {"shell_water": [], "cover_water": []}
     
-    # 9. 查询当前批次投料累计历史数据（无聚合）
+    # 10. 查询投料记录（详细记录）
+    def query_feeding_records(
+        self,
+        batch_code: str,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        limit: int = 1000
+    ) -> List[Dict[str, Any]]:
+        """
+        查询投料记录（每次投料的详细记录）
+        
+        Args:
+            batch_code: 批次号
+            start_time: 开始时间（可选）
+            end_time: 结束时间（可选）
+            limit: 最大返回记录数
+            
+        Returns:
+            投料记录列表 [{'time': str, 'discharge_weight': float, 'feeding_total': float}, ...]
+        """
+        try:
+            time_filter = self._build_time_filter(batch_code, start_time, end_time)
+            
+            # 使用新标签格式查询
+            query = f'''
+            from(bucket: "{settings.influx_bucket}")
+              {time_filter}
+              |> filter(fn: (r) => r["_measurement"] == "sensor_data")
+              |> filter(fn: (r) => r["batch_code"] == "{batch_code}")
+              |> filter(fn: (r) => r["_field"] == "discharge_weight" or r["_field"] == "feeding_total")
+              |> filter(fn: (r) => r["module_type"] == "feeding")
+              |> filter(fn: (r) => r["device_type"] == "hopper")
+              |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+              |> sort(columns: ["_time"], desc: true)
+              |> limit(n: {limit})
+            '''
+            
+            result = self.query_api.query(query)
+            
+            records = []
+            
+            for table in result:
+                for record in table.records:
+                    utc_time = record.get_time()
+                    beijing_time = self._utc_to_beijing(utc_time)
+                    discharge_weight = record.values.get('discharge_weight', 0.0)
+                    feeding_total = record.values.get('feeding_total', 0.0)
+                    
+                    records.append({
+                        'time': beijing_time,
+                        'discharge_weight': discharge_weight,
+                        'feeding_total': feeding_total
+                    })
+            
+            logger.info(f"查询到 {len(records)} 条投料记录")
+            return records
+            
+        except Exception as e:
+            logger.error(f"查询投料记录失败: {e}", exc_info=True)
+            return []
+    
+    # 11. 查询当前批次投料累计历史数据（无聚合）
     def query_feeding_total_raw(
         self,
         batch_code: str,
@@ -357,11 +471,14 @@ class HistoryQueryService:
         try:
             time_filter = self._build_time_filter(batch_code, start_time, end_time)
             
+            # 使用新标签格式查询
             query = f'''
             from(bucket: "{settings.influx_bucket}")
               {time_filter}
               |> filter(fn: (r) => r["_measurement"] == "sensor_data")
               |> filter(fn: (r) => r["batch_code"] == "{batch_code}")
+              |> filter(fn: (r) => r["module_type"] == "feeding")
+              |> filter(fn: (r) => r["device_type"] == "hopper")
               |> filter(fn: (r) => r["_field"] == "feeding_total")
               |> sort(columns: ["_time"])
             '''
@@ -387,7 +504,7 @@ class HistoryQueryService:
             logger.error(f"查询投料累计数据失败: {e}")
             return []
     
-    # 10. 计算最佳聚合间隔
+    # 12. 计算最佳聚合间隔
     def calculate_optimal_interval(self, start_time: datetime, end_time: datetime, target_points: int = 100) -> str:
         """
         根据时间跨度计算最佳聚合间隔，确保数据点数量在目标范围内
@@ -433,7 +550,7 @@ class HistoryQueryService:
         logger.info(f"时间跨度: {time_span_seconds/3600:.1f}小时, 选择聚合间隔: {best_interval}")
         return best_interval
     
-    # 11. 构建时间过滤器
+    # 13. 构建时间过滤器
     def _build_time_filter(
         self, 
         batch_code: str, 
@@ -445,24 +562,9 @@ class HistoryQueryService:
         注意：InfluxDB 使用 UTC 时间，需要将本地时间（北京时间 UTC+8）转换为 UTC
         """
         if start_time and end_time:
-            from datetime import timezone, timedelta
-            
-            # 如果是 naive datetime（无时区信息），假设为北京时间（UTC+8）
-            if start_time.tzinfo is None:
-                # 先标记为北京时区（UTC+8）
-                beijing_tz = timezone(timedelta(hours=8))
-                start_beijing = start_time.replace(tzinfo=beijing_tz)
-                # 转换为 UTC（减去8小时）
-                start_utc = start_beijing.astimezone(timezone.utc)
-            else:
-                start_utc = start_time.astimezone(timezone.utc)
-            
-            if end_time.tzinfo is None:
-                beijing_tz = timezone(timedelta(hours=8))
-                end_beijing = end_time.replace(tzinfo=beijing_tz)
-                end_utc = end_beijing.astimezone(timezone.utc)
-            else:
-                end_utc = end_time.astimezone(timezone.utc)
+            # 使用统一的时间转换方法
+            start_utc = self._beijing_to_utc(start_time)
+            end_utc = self._beijing_to_utc(end_time)
             
             start_iso = start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
             end_iso = end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -472,7 +574,7 @@ class HistoryQueryService:
         else:
             return '|> range(start: -90d)'
     
-    # 11. 查询批次统计数据（用于批次对比）
+    # 14. 查询批次统计数据（用于批次对比）
     def query_batch_statistics(self, batch_code: str) -> Dict[str, Any]:
         """
         查询单个批次的统计数据
@@ -520,12 +622,14 @@ class HistoryQueryService:
                     result['energy_total'] = record.get_value() or 0.0
                     break
             
-            # 2. 查询累计投料最大值
+            # 2. 查询累计投料最大值 (使用新标签格式)
             query_feeding = f'''
             from(bucket: "{settings.influx_bucket}")
               |> range(start: -90d)
               |> filter(fn: (r) => r["_measurement"] == "sensor_data")
               |> filter(fn: (r) => r["batch_code"] == "{batch_code}")
+              |> filter(fn: (r) => r["module_type"] == "feeding")
+              |> filter(fn: (r) => r["device_type"] == "hopper")
               |> filter(fn: (r) => r["_field"] == "feeding_total")
               |> max()
             '''
@@ -591,8 +695,8 @@ class HistoryQueryService:
                 start_time = times[0]
                 end_time = times[-1]
                 
-                result['start_time'] = start_time.isoformat()
-                result['end_time'] = end_time.isoformat()
+                result['start_time'] = self._utc_to_beijing(start_time)
+                result['end_time'] = self._utc_to_beijing(end_time)
                 
                 # 计算时长（小时）
                 duration_seconds = (end_time - start_time).total_seconds()
@@ -619,7 +723,7 @@ class HistoryQueryService:
                 'end_time': None
             }
     
-    # 12. 删除指定批次的所有数据
+    # 15. 删除指定批次的所有数据
     def delete_batch_data(self, batch_code: str) -> dict:
         """
         删除指定批次的所有数据
@@ -666,7 +770,7 @@ class HistoryQueryService:
             }
 
 
-# 12. 获取历史查询服务单例
+# 16. 获取历史查询服务单例
 def get_history_query_service() -> HistoryQueryService:
     return HistoryQueryService.get_instance()
 

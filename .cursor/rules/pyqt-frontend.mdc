@@ -746,6 +746,249 @@ layout.addWidget(widget2, stretch=40)
 - **不使用虚拟环境启动python**
 - **任何需要从您的数据库进行数据验证时，可以直接使用 finfluxdb 查询语句。由于您的数据库通过 Docker 部署（如容器名：furnace-influxdb），您可用如下命令进入容器测试数据：docker exec -it furnace-influxdb influx query ...。务必确认所需数据格式及内容均符合需求，有异常请及时审查 influxdb 数据源和后端数据同步处理逻辑。**
 
+## InfluxDB 数据库结构规范
+
+### Measurement 统一规范
+
+**项目使用单一 Measurement**: `sensor_data`
+
+所有数据通过 `module_type` tag 区分类型，保持数据库结构统一。
+
+### 数据点分类
+
+#### 1. 电极深度数据 (module_type=electrode_depth)
+
+```python
+measurement='sensor_data'
+tags={
+    'device_type': 'electric_furnace',
+    'device_id': 'furnace_1',
+    'factory_area': 'L3',
+    'module_type': 'electrode_depth',
+    'sensor': 'electrode_1/2/3',
+    'plc_variable': 'LENTH1/2/3',
+    'batch_code': '26010315'
+}
+fields={
+    'distance_mm': 1250.5,  # 电极深度 (mm)
+    'high_word': 0,         # 高字
+    'low_word': 1250        # 低字
+}
+```
+
+#### 2. 冷却水压力数据 (module_type=cooling_system, metric=pressure)
+
+```python
+measurement='sensor_data'
+tags={
+    'device_type': 'electric_furnace',
+    'device_id': 'furnace_1',
+    'factory_area': 'L3',
+    'module_type': 'cooling_system',
+    'sensor': 'cooling_water_in/out',
+    'metric': 'pressure',
+    'plc_variable': 'WATER_PRESS_1/2',
+    'batch_code': '26010315'
+}
+fields={
+    'value': 250.5,  # 压力值 (kPa)
+    'raw': 25050     # 原始值
+}
+```
+
+#### 3. 冷却水流量数据 (module_type=cooling_system, metric=flow)
+
+```python
+measurement='sensor_data'
+tags={
+    'device_type': 'electric_furnace',
+    'device_id': 'furnace_1',
+    'factory_area': 'L3',
+    'module_type': 'cooling_system',
+    'sensor': 'cooling_line_1/2',
+    'metric': 'flow',
+    'plc_variable': 'WATER_FLOW_1/2',
+    'batch_code': '26010315'
+}
+fields={
+    'value': 12.5,  # 流量值 (m³/h)
+    'raw': 125      # 原始值
+}
+```
+
+#### 4. 冷却水累计流量 (module_type=cooling_water_total)
+
+```python
+measurement='sensor_data'
+tags={
+    'device_type': 'electric_furnace',
+    'device_id': 'furnace_1',
+    'module_type': 'cooling_water_total',
+    'batch_code': '26010315'
+}
+fields={
+    'furnace_shell_water_total': 125.5,  # 炉皮累计流量 (m³)
+    'furnace_cover_water_total': 98.3    # 炉盖累计流量 (m³)
+}
+```
+
+#### 5. 炉皮-炉盖压差 (module_type=cooling_system, metric=pressure_diff)
+
+```python
+measurement='sensor_data'
+tags={
+    'device_type': 'electric_furnace',
+    'device_id': 'furnace_1',
+    'module_type': 'cooling_system',
+    'metric': 'pressure_diff',
+    'batch_code': '26010315'
+}
+fields={
+    'value': 15.3  # 压差绝对值 (kPa)
+}
+```
+
+#### 6. 弧流弧压数据 (module_type=arc_data)
+
+```python
+measurement='sensor_data'
+tags={
+    'device_type': 'electric_furnace',
+    'device_id': 'electrode',
+    'module_type': 'arc_data',
+    'batch_code': '26010315'
+}
+fields={
+    # 每次写入
+    'arc_current_U': 8500.0,  # U相弧流 (A)
+    'arc_current_V': 8600.0,  # V相弧流 (A)
+    'arc_current_W': 8400.0,  # W相弧流 (A)
+    'arc_voltage_U': 85.5,    # U相弧压 (V)
+    'arc_voltage_V': 86.2,    # V相弧压 (V)
+    'arc_voltage_W': 84.8,    # W相弧压 (V)
+    'power_U': 726.75,        # U相功率 (kW)
+    'power_V': 741.32,        # V相功率 (kW)
+    'power_W': 712.32,        # W相功率 (kW)
+    'power_total': 2180.39,   # 总功率 (kW)
+    
+    # 仅变化时写入
+    'arc_current_setpoint_U': 8500.0,  # U相弧流设定值 (A)
+    'arc_current_setpoint_V': 8500.0,  # V相弧流设定值 (A)
+    'arc_current_setpoint_W': 8500.0,  # W相弧流设定值 (A)
+    'manual_deadzone_percent': 5.0     # 手动死区百分比 (%)
+}
+```
+
+#### 7. 能耗累计数据 (module_type=energy_consumption)
+
+```python
+measurement='sensor_data'
+tags={
+    'device_type': 'electric_furnace',
+    'device_id': 'electrode',
+    'module_type': 'energy_consumption',
+    'batch_code': '26010315'
+}
+fields={
+    'energy_total': 1250.5  # 累计能耗 (kWh)
+}
+```
+
+#### 8. 投料数据 (module_type=feeding)
+
+```python
+measurement='sensor_data'
+tags={
+    'device_type': 'hopper',
+    'device_id': 'hopper_1',
+    'module_type': 'feeding',
+    'batch_code': '26010315'
+}
+fields={
+    'discharge_weight': 150.5,  # 本次排料重量 (kg)
+    'feeding_total': 1250.5     # 累计投料量 (kg)
+}
+```
+
+### 查询示例
+
+#### 查询电极深度
+
+```flux
+from(bucket: "furnace_data")
+    |> range(start: -7d)
+    |> filter(fn: (r) => r["_measurement"] == "sensor_data")
+    |> filter(fn: (r) => r["batch_code"] == "26010315")
+    |> filter(fn: (r) => r["module_type"] == "electrode_depth")
+    |> filter(fn: (r) => r["sensor"] == "electrode_1")
+    |> filter(fn: (r) => r["_field"] == "distance_mm")
+```
+
+#### 查询弧流弧压
+
+```flux
+from(bucket: "furnace_data")
+    |> range(start: -7d)
+    |> filter(fn: (r) => r["_measurement"] == "sensor_data")
+    |> filter(fn: (r) => r["batch_code"] == "26010315")
+    |> filter(fn: (r) => r["module_type"] == "arc_data")
+    |> filter(fn: (r) => r["_field"] =~ /arc_current_|arc_voltage_/)
+```
+
+#### 查询累计能耗
+
+```flux
+from(bucket: "furnace_data")
+    |> range(start: -7d)
+    |> filter(fn: (r) => r["_measurement"] == "sensor_data")
+    |> filter(fn: (r) => r["batch_code"] == "26010315")
+    |> filter(fn: (r) => r["module_type"] == "energy_consumption")
+    |> filter(fn: (r) => r["_field"] == "energy_total")
+    |> max()
+```
+
+#### 查询投料累计
+
+```flux
+from(bucket: "furnace_data")
+    |> range(start: -7d)
+    |> filter(fn: (r) => r["_measurement"] == "sensor_data")
+    |> filter(fn: (r) => r["batch_code"] == "26010315")
+    |> filter(fn: (r) => r["module_type"] == "feeding")
+    |> filter(fn: (r) => r["_field"] == "feeding_total")
+    |> max()
+```
+
+### 数据库验证命令
+
+```bash
+# 进入 InfluxDB 容器
+docker exec -it furnace-influxdb influx query '
+from(bucket: "furnace_data")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r["_measurement"] == "sensor_data")
+  |> filter(fn: (r) => r["module_type"] == "arc_data")
+  |> limit(n: 10)
+'
+```
+
+### 重要说明
+
+1. **统一 Measurement**: 所有数据使用 `sensor_data`，通过 `module_type` 区分
+2. **批次号必填**: 所有数据点必须包含 `batch_code` tag
+3. **写入条件**: 只有在有批次号且冶炼状态为运行中时才写入数据库
+4. **累计值管理**: 新批次开始时从数据库恢复最新累计值到内存
+5. **变化检测**: 部分数据点（设定值、死区、累计值）只在变化时写入
+
+### 相关文档
+
+- `vdoc/INFLUXDB_DATA_POINTS_SUMMARY.md` - 完整的数据点汇总文档
+- `vdoc/MEASUREMENT_UNIFICATION.md` - Measurement 统一修改报告
+- `backend/services/hopper/accumulator.py` - 投料累计服务
+- `backend/bridge/history_query.py` - 历史数据查询服务
+
+---
+
 ## 下一步
 
 **继续完善 UI 组件和页面**

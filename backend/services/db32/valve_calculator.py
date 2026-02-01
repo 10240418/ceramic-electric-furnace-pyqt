@@ -53,7 +53,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from collections import deque
 from dataclasses import dataclass, field
 
-from backend.services.valve_config_service import get_valve_config_service
+from backend.services.db32.valve_config import get_valve_config_service
 
 
 # ============================================================

@@ -462,7 +462,7 @@ class TopNavBar(QFrame):
                 btn.setStyleSheet(f"""
                     QPushButton {{
                         background: {tm.border_glow()}15;
-                        color: {tm.text_inverse()};
+                        color: {tm.text_selected()};
                         border: 1px solid {tm.border_glow()};
                         border-radius: 4px;
                         padding: 8px 20px;

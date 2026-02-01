@@ -116,7 +116,60 @@ class BarBatchInfo(QFrame):
     def on_long_press_complete(self):
         """长按3秒完成，触发终止记录"""
         logger.info("长按3秒完成，触发终止记录")
-        self.terminate_smelting_clicked.emit()
+        
+        # 先强制刷新所有缓存，再触发终止记录信号
+        self.force_flush_caches_async()
+    
+    # 6. 异步强制刷新所有缓存
+    def force_flush_caches_async(self):
+        """异步强制刷新所有缓存，立即写入数据库（不阻塞 UI）"""
+        try:
+            from backend.services.batch_service import get_batch_service
+            from backend.bridge.service_manager import get_service_manager
+            import asyncio
+            
+            batch_service = get_batch_service()
+            service_manager = get_service_manager()
+            
+            # 检查后端事件循环是否存在
+            if not service_manager or not service_manager.loop:
+                logger.error("后端事件循环不存在，无法刷新缓存")
+                self.terminate_smelting_clicked.emit()
+                return
+            
+            # 在后端的 asyncio 事件循环中执行刷新操作
+            future = asyncio.run_coroutine_threadsafe(
+                batch_service.force_flush_all_caches(),
+                service_manager.loop
+            )
+            
+            # 添加回调，刷新完成后触发终止记录信号
+            future.add_done_callback(self.on_flush_finished)
+            
+            logger.info("缓存刷新任务已提交到后端事件循环...")
+        
+        except Exception as e:
+            logger.error(f"提交缓存刷新任务失败: {e}", exc_info=True)
+            # 即使刷新失败，也要触发终止记录信号
+            self.terminate_smelting_clicked.emit()
+    
+    # 7. 缓存刷新完成回调
+    def on_flush_finished(self, future):
+        """缓存刷新完成后的回调"""
+        try:
+            result = future.result()
+            
+            if result["success"]:
+                logger.info(f"缓存刷新完成: {result['message']}")
+            else:
+                logger.warning(f"缓存刷新失败: {result['message']}")
+        
+        except Exception as e:
+            logger.error(f"获取缓存刷新结果失败: {e}", exc_info=True)
+        
+        finally:
+            # 触发终止记录信号
+            self.terminate_smelting_clicked.emit()
     
     # 7. 应用样式
     def apply_styles(self):

@@ -108,7 +108,35 @@ class HopperDB18Parser:
         
         return result
     
-    # 5. 获取料仓上限值
+    # 5. 获取当前料仓重量
+    def get_current_weight(self, data: bytes) -> float:
+        """
+        获取当前料仓重量
+        
+        Args:
+            data: PLC 读取的原始字节数据
+            
+        Returns:
+            当前料仓重量 (kg)
+        """
+        parsed = self.parse(data)
+        return parsed.get('current_weight', 0.0)
+    
+    # 6. 获取本次排料重量
+    def get_discharge_weight(self, data: bytes) -> float:
+        """
+        获取本次排料重量
+        
+        Args:
+            data: PLC 读取的原始字节数据
+            
+        Returns:
+            本次排料重量 (kg)
+        """
+        parsed = self.parse(data)
+        return parsed.get('discharge_weight', 0.0)
+    
+    # 7. 获取料仓上限值
     def get_upper_limit(self, data: bytes) -> float:
         """
         获取料仓上限值
@@ -122,12 +150,12 @@ class HopperDB18Parser:
         parsed = self.parse(data)
         return parsed.get('upper_limit', 4900.0)
     
-    # 6. 获取 DB 编号
+    # 8. 获取 DB 编号
     def get_db_number(self) -> int:
         """获取 DB 编号"""
         return self.db_config['db_number']
     
-    # 7. 获取总大小
+    # 9. 获取总大小
     def get_total_size(self) -> int:
         """获取 DB 总大小"""
         return self.db_config['total_size']

@@ -68,25 +68,6 @@ def get_polling_status():
 # ============================================================
 # 批次号管理函数 (代理到 BatchService)
 # ============================================================
-def _generate_batch_code(furnace_number: int = 3) -> str:
-    """生成批次号
-    
-    格式: FFYYMMDD (8位数字，无分隔符)
-    - FF: 炉号 (01-99)
-    - YY: 年份后两位 (26 = 2026)
-    - MM: 月份 (01-12)
-    - DD: 日期 (01-31)
-    
-    示例: 03260123 = 3号炉 + 2026年1月23日
-    """
-    now = datetime.now()
-    furnace = str(furnace_number).zfill(2)
-    year = str(now.year % 100).zfill(2)  # 只取后两位
-    month = str(now.month).zfill(2)
-    day = str(now.day).zfill(2)
-    return f"{furnace}{year}{month}{day}"
-
-
 def ensure_batch_code() -> Optional[str]:
     """获取当前批次号
     
@@ -136,7 +117,7 @@ def start_smelting(batch_code: Optional[str] = None) -> Dict[str, Any]:
     # 重置蝶阀开度 (新批次从0%开始)
     # ========================================
     try:
-        from backend.services.valve_calculator_service import reset_all_valve_openness
+        from backend.services.db32.valve_calculator import reset_all_valve_openness
         reset_all_valve_openness(batch_code=batch_code)
         print(f"🔄 蝶阀开度已重置 (批次: {batch_code})")
     except Exception as e:

@@ -13,7 +13,7 @@ from .dialog_set_limit import DialogSetLimit
 from backend.bridge.history_query import get_history_query_service
 from backend.bridge.data_cache import DataCache
 from loguru import logger
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 class DialogHopperDetail(QDialog):
@@ -212,7 +212,7 @@ class DialogHopperDetail(QDialog):
     
     # 7. 更新数据
     def update_data(self, feeding_total: float, hopper_weight: float, 
-                    upper_limit: float, is_feeding: bool):
+                    upper_limit: float, state: str = 'idle'):
         """
         更新数据
         
@@ -220,40 +220,55 @@ class DialogHopperDetail(QDialog):
             feeding_total: 投料累计（kg）
             hopper_weight: 料仓重量（kg）
             upper_limit: 料仓上限（kg）
-            is_feeding: 是否正在投料
+            state: 料仓状态
+                - 'idle': 静止
+                - 'feeding': 上料中
+                - 'waiting_feed': 排队等待上料
+                - 'discharging': 排料中
         """
         self.feeding_total = feeding_total
         self.hopper_weight = hopper_weight
         self.upper_limit = upper_limit
-        self.is_feeding = is_feeding
+        
+        # 状态映射
+        state_config = {
+            'idle': {
+                'text': '投料状态: 静止',
+                'color': self.theme_manager.get_colors().TEXT_SECONDARY,
+                'border': self.theme_manager.get_colors().BORDER_DARK,
+            },
+            'feeding': {
+                'text': '投料状态: 上料中',
+                'color': self.theme_manager.get_colors().GLOW_PRIMARY,
+                'border': self.theme_manager.get_colors().BORDER_GLOW,
+            },
+            'waiting_feed': {
+                'text': '投料状态: 排队等待上料',
+                'color': '#FFA500',  # 橙色
+                'border': '#FFA500',
+            },
+            'discharging': {
+                'text': '投料状态: 排料中',
+                'color': '#00FF00',  # 绿色
+                'border': '#00FF00',
+            }
+        }
+        
+        config = state_config.get(state, state_config['idle'])
+        colors = self.theme_manager.get_colors()
         
         # 更新状态
-        status_text = "投料状态: 投料中" if is_feeding else "投料状态: 未投料"
-        self.status_label.setText(status_text)
-        
-        colors = self.theme_manager.get_colors()
-        if is_feeding:
-            self.status_label.setStyleSheet(f"""
-                QLabel#statusLabel {{
-                    background: {colors.BG_LIGHT};
-                    color: {colors.GLOW_PRIMARY};
-                    font-size: 16px;
-                    font-weight: bold;
-                    border: 1px solid {colors.BORDER_GLOW};
-                    border-radius: 6px;
-                }}
-            """)
-        else:
-            self.status_label.setStyleSheet(f"""
-                QLabel#statusLabel {{
-                    background: {colors.BG_LIGHT};
-                    color: {colors.TEXT_SECONDARY};
-                    font-size: 16px;
-                    font-weight: bold;
-                    border: 1px solid {colors.BORDER_DARK};
-                    border-radius: 6px;
-                }}
-            """)
+        self.status_label.setText(config['text'])
+        self.status_label.setStyleSheet(f"""
+            QLabel#statusLabel {{
+                background: {colors.BG_LIGHT};
+                color: {config['color']};
+                font-size: 16px;
+                font-weight: bold;
+                border: 1px solid {config['border']};
+                border-radius: 6px;
+            }}
+        """)
         
         # 更新投料累计
         feeding_value_label = self.feeding_total_widget.findChild(QLabel, "dataValue")
@@ -326,74 +341,65 @@ class DialogHopperDetail(QDialog):
             
             logger.info(f"开始加载批次 {batch_code} 的历史投料数据...")
             
-            # 查询当前批次的投料累计历史数据（无聚合，原始数据）
-            feeding_data = self.history_service.query_feeding_total_raw(batch_code)
+            # 1. 查询投料记录（详细记录，从 feeding_records measurement）
+            feeding_records_data = self.history_service.query_feeding_records(
+                batch_code=batch_code,
+                limit=1000
+            )
             
-            if not feeding_data:
-                logger.warning(f"批次 {batch_code} 没有历史投料数据")
-                return
+            if feeding_records_data:
+                logger.info(f"查询到 {len(feeding_records_data)} 条投料记录")
+                
+                # 转换为前端需要的格式
+                records = []
+                for record in feeding_records_data:
+                    # 将 UTC 时间转换为北京时间（UTC+8）
+                    utc_time = datetime.fromisoformat(record['time'])
+                    if utc_time.tzinfo is None:
+                        from datetime import timezone
+                        utc_time = utc_time.replace(tzinfo=timezone.utc)
+                    
+                    beijing_time = utc_time.astimezone(timezone(timedelta(hours=8)))
+                    
+                    records.append({
+                        'timestamp': beijing_time,
+                        'weight': record['discharge_weight']
+                    })
+                
+                # 更新投料记录表
+                self.set_feeding_records(records)
+            else:
+                logger.warning(f"批次 {batch_code} 没有投料记录")
             
-            logger.info(f"查询到 {len(feeding_data)} 条投料累计数据")
+            # 2. 查询投料累计历史数据（用于绘制曲线）
+            feeding_total_data = self.history_service.query_feeding_total_raw(batch_code)
             
-            # 提取时间和累计值
-            timestamps = [d['time'] for d in feeding_data]
-            cumulative_values = [d['value'] for d in feeding_data]
-            
-            # 更新投料累计曲线
-            self.feeding_stats_chart.set_data(timestamps, cumulative_values)
-            
-            # 计算投料记录（差值法）
-            feeding_records = self.calculate_feeding_records(feeding_data)
-            
-            logger.info(f"计算出 {len(feeding_records)} 条投料记录")
-            
-            # 更新投料记录表
-            self.set_feeding_records(feeding_records)
+            if feeding_total_data:
+                logger.info(f"查询到 {len(feeding_total_data)} 条投料累计数据")
+                
+                # 提取时间和累计值，并转换为北京时间
+                timestamps = []
+                cumulative_values = []
+                
+                for d in feeding_total_data:
+                    utc_time = d['time']
+                    if utc_time.tzinfo is None:
+                        utc_time = utc_time.replace(tzinfo=timezone.utc)
+                    
+                    # 转换为北京时间（UTC+8）
+                    beijing_time = utc_time.astimezone(timezone(timedelta(hours=8)))
+                    timestamps.append(beijing_time)
+                    cumulative_values.append(d['value'])
+                
+                # 更新投料累计曲线
+                self.feeding_stats_chart.set_data(timestamps, cumulative_values)
+            else:
+                logger.warning(f"批次 {batch_code} 没有投料累计数据")
             
         except Exception as e:
             logger.error(f"加载历史投料数据失败: {e}", exc_info=True)
     
-    # 12. 计算投料记录（差值法）
-    def calculate_feeding_records(self, feeding_data: list) -> list:
-        """
-        根据投料累计数据计算每次投料记录
-        
-        算法：
-        1. 遍历投料累计数据，计算相邻两点的差值
-        2. 如果差值 > 阈值（如50kg），认为发生了一次投料
-        3. 记录投料时间和投料重量
-        
-        Args:
-            feeding_data: 投料累计数据 [{'time': datetime, 'value': float}, ...]
-            
-        Returns:
-            投料记录列表 [{'timestamp': datetime, 'weight': float}, ...]
-        """
-        if len(feeding_data) < 2:
-            return []
-        
-        records = []
-        threshold = 50.0  # 投料阈值（kg），小于此值的变化忽略
-        
-        for i in range(1, len(feeding_data)):
-            prev_value = feeding_data[i - 1]['value']
-            curr_value = feeding_data[i]['value']
-            curr_time = feeding_data[i]['time']
-            
-            # 计算差值
-            diff = curr_value - prev_value
-            
-            # 如果差值大于阈值，认为发生了投料
-            if diff > threshold:
-                records.append({
-                    'timestamp': curr_time,
-                    'weight': diff
-                })
-                logger.debug(f"检测到投料: 时间={curr_time}, 重量={diff:.1f}kg")
-        
-        return records
-    
-    # 13. 应用样式
+    # 12. 应用样式
     def apply_styles(self):
         colors = self.theme_manager.get_colors()
         

@@ -523,7 +523,18 @@ class PageElec3(QWidget):
                 hopper = sensor_data['hopper']
                 self.mock_data['hopper']['weight'] = hopper.get('weight', 0.0)
                 self.mock_data['hopper']['feeding_total'] = hopper.get('feeding_total', 0.0)
-                is_discharging = hopper.get('is_discharging', False)
+                
+                # 获取料仓状态（四种状态）
+                hopper_state = hopper.get('state', 'idle')
+                
+                # 状态映射
+                state_map = {
+                    'idle': '静止',
+                    'feeding': '上料中',
+                    'waiting_feed': '排队等待上料',
+                    'discharging': '排料中'
+                }
+                state_text = state_map.get(hopper_state, '未知')
                 
                 # 从 DB18 读取料仓上限值
                 upper_limit = self.data_cache.get_hopper_upper_limit()
@@ -532,7 +543,7 @@ class PageElec3(QWidget):
                 hopper_items = [
                     DataItem(
                         label="投料状态",
-                        value="投料中" if is_discharging else "未投料",
+                        value=state_text,
                         unit="",
                         icon="📊"
                     ),
@@ -805,12 +816,15 @@ class PageElec3(QWidget):
     # 16. 显示料仓详情弹窗
     def show_hopper_detail(self):
         """显示料仓详情弹窗"""
-        from ui.widgets.realtime_data.hopper import DialogHopperDetail
-        from datetime import timedelta
-        import random
-        
         try:
+            logger.info("开始导入 DialogHopperDetail...")
+            from ui.widgets.realtime_data.hopper import DialogHopperDetail
+            from datetime import timedelta
+            import random
+            
+            logger.info("开始创建 DialogHopperDetail 实例...")
             dialog = DialogHopperDetail(self)
+            logger.info("DialogHopperDetail 实例创建成功")
             
             # 获取当前料仓数据
             sensor_data = self.data_cache.get_sensor_data()
@@ -820,21 +834,25 @@ class PageElec3(QWidget):
                 hopper_weight = hopper_data.get('weight', 0.0)
                 feeding_total = hopper_data.get('feeding_total', 0.0)
                 upper_limit = self.mock_data['hopper']['upper_limit']
-                is_feeding = hopper_data.get('is_discharging', False)
+                hopper_state = hopper_data.get('state', 'idle')
             else:
                 # 使用模拟数据
                 hopper_weight = self.mock_data['hopper']['weight']
                 feeding_total = self.mock_data['hopper']['feeding_total']
                 upper_limit = self.mock_data['hopper']['upper_limit']
-                is_feeding = False
+                hopper_state = 'idle'
+            
+            logger.info(f"准备更新弹窗数据: weight={hopper_weight}, total={feeding_total}, limit={upper_limit}, state={hopper_state}")
             
             # 更新弹窗数据
             dialog.update_data(
                 feeding_total=feeding_total,
                 hopper_weight=hopper_weight,
                 upper_limit=upper_limit,
-                is_feeding=is_feeding
+                state=hopper_state
             )
+            
+            logger.info("弹窗数据更新成功")
             
             # 生成模拟投料记录
             feeding_records = []
@@ -854,10 +872,15 @@ class PageElec3(QWidget):
             # 连接信号
             dialog.upper_limit_set.connect(self.on_hopper_upper_limit_set)
             
-            logger.info("打开料仓详情弹窗")
+            logger.info("准备显示料仓详情弹窗...")
             dialog.exec()
+            logger.info("料仓详情弹窗已关闭")
+            
         except Exception as e:
             logger.error(f"显示料仓详情弹窗失败: {e}", exc_info=True)
+            # 显示错误提示
+            from ui.widgets.common.dialog_message import show_error
+            show_error(self, "打开失败", f"无法打开料仓详情弹窗:\n{str(e)}")
     
     # 17. 料仓上限设置完成
     def on_hopper_upper_limit_set(self, limit: float):

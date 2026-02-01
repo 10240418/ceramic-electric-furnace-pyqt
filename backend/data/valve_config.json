@@ -1,0 +1,26 @@
+{
+  "1": {
+    "valve_id": 1,
+    "full_open_time": 30.0,
+    "full_close_time": 30.0,
+    "updated_at": "2026-02-02T03:30:49.273299"
+  },
+  "2": {
+    "valve_id": 2,
+    "full_open_time": 30.0,
+    "full_close_time": 30.0,
+    "updated_at": "2026-02-02T03:30:49.273299"
+  },
+  "3": {
+    "valve_id": 3,
+    "full_open_time": 30.0,
+    "full_close_time": 30.0,
+    "updated_at": "2026-02-02T03:30:49.273299"
+  },
+  "4": {
+    "valve_id": 4,
+    "full_open_time": 30.0,
+    "full_close_time": 30.0,
+    "updated_at": "2026-02-02T03:30:49.273299"
+  }
+}

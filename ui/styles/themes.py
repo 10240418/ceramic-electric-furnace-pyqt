@@ -198,187 +198,199 @@ class ThemeManager(QObject):
     def text_accent(self) -> str:
         return self.get_color('TEXT_ACCENT')
     
-    # 41. 状态色
+    # 41. 文字色
+    def text_on_primary(self) -> str:
+        return self.get_color('TEXT_ON_PRIMARY')
+    
+    # 42. 文字色
+    def text_selected(self) -> str:
+        return self.get_color('TEXT_SELECTED')
+    
+    # 43. 文字色
+    def text_focus(self) -> str:
+        return self.get_color('TEXT_FOCUS')
+    
+    # 44. 状态色
     def status_normal(self) -> str:
         return self.get_color('STATUS_NORMAL')
     
-    # 42. 状态色
+    # 45. 状态色
     def status_success(self) -> str:
         return self.get_color('STATUS_SUCCESS')
     
-    # 43. 状态色
+    # 46. 状态色
     def status_warning(self) -> str:
         return self.get_color('STATUS_WARNING')
     
-    # 44. 状态色
+    # 47. 状态色
     def status_alarm(self) -> str:
         return self.get_color('STATUS_ALARM')
     
-    # 45. 状态色
+    # 48. 状态色
     def status_error(self) -> str:
         return self.get_color('STATUS_ERROR')
     
-    # 46. 状态色
+    # 49. 状态色
     def status_info(self) -> str:
         return self.get_color('STATUS_INFO')
     
-    # 47. 状态色
+    # 50. 状态色
     def status_offline(self) -> str:
         return self.get_color('STATUS_OFFLINE')
     
-    # 48. 状态色
+    # 51. 状态色
     def status_disabled(self) -> str:
         return self.get_color('STATUS_DISABLED')
     
-    # 49. 按钮色
+    # 52. 按钮色
     def button_primary_bg(self) -> str:
         return self.get_color('BUTTON_PRIMARY_BG')
     
-    # 50. 按钮色
+    # 53. 按钮色
     def button_primary_text(self) -> str:
         return self.get_color('BUTTON_PRIMARY_TEXT')
     
-    # 51. 按钮色
+    # 54. 按钮色
     def button_primary_hover(self) -> str:
         return self.get_color('BUTTON_PRIMARY_HOVER')
     
-    # 52. 输入框色
+    # 55. 输入框色
     def input_bg(self) -> str:
         return self.get_color('INPUT_BG')
     
-    # 53. 输入框色
+    # 56. 输入框色
     def input_border(self) -> str:
         return self.get_color('INPUT_BORDER')
     
-    # 54. 输入框色
+    # 57. 输入框色
     def input_border_focus(self) -> str:
         return self.get_color('INPUT_BORDER_FOCUS')
     
-    # 55. 卡片色
+    # 58. 卡片色
     def card_bg(self) -> str:
         return self.get_color('CARD_BG')
     
-    # 56. 卡片色
+    # 59. 卡片色
     def card_border(self) -> str:
         return self.get_color('CARD_BORDER')
     
-    # 57. 卡片色
+    # 60. 卡片色
     def card_hover_border(self) -> str:
         return self.get_color('CARD_HOVER_BORDER')
     
-    # 58. 表格色
+    # 61. 表格色
     def table_bg(self) -> str:
         return self.get_color('TABLE_BG')
     
-    # 59. 表格色
+    # 62. 表格色
     def table_header_bg(self) -> str:
         return self.get_color('TABLE_HEADER_BG')
     
-    # 60. 表格色
+    # 63. 表格色
     def table_header_text(self) -> str:
         return self.get_color('TABLE_HEADER_TEXT')
     
-    # 61. 图表色
+    # 64. 图表色
     def chart_line_1(self) -> str:
         return self.get_color('CHART_LINE_1')
     
-    # 62. 图表色
+    # 65. 图表色
     def chart_line_2(self) -> str:
         return self.get_color('CHART_LINE_2')
     
-    # 63. 图表色
+    # 66. 图表色
     def chart_line_3(self) -> str:
         return self.get_color('CHART_LINE_3')
     
-    # 64. 图表色
+    # 67. 图表色
     def chart_line_4(self) -> str:
         return self.get_color('CHART_LINE_4')
     
-    # 65. 图表色
+    # 68. 图表色
     def chart_line_5(self) -> str:
         return self.get_color('CHART_LINE_5')
     
-    # 66. 图表色
+    # 69. 图表色
     def chart_line_6(self) -> str:
         return self.get_color('CHART_LINE_6')
     
-    # 67. 图表色
+    # 70. 图表色
     def chart_grid(self) -> str:
         return self.get_color('CHART_GRID')
     
-    # 68. 图表色
+    # 71. 图表色
     def chart_axis(self) -> str:
         return self.get_color('CHART_AXIS')
     
-    # 69. 图表色
+    # 72. 图表色
     def chart_bg(self) -> str:
         return self.get_color('CHART_BG')
     
-    # 70. 下拉框色
+    # 73. 下拉框色
     def dropdown_bg(self) -> str:
         return self.get_color('DROPDOWN_BG')
     
-    # 71. 下拉框色
+    # 74. 下拉框色
     def dropdown_border(self) -> str:
         return self.get_color('DROPDOWN_BORDER')
     
-    # 72. 标签页色
+    # 75. 标签页色
     def tab_bg(self) -> str:
         return self.get_color('TAB_BG')
     
-    # 73. 标签页色
+    # 76. 标签页色
     def tab_active_bg(self) -> str:
         return self.get_color('TAB_ACTIVE_BG')
     
-    # 74. 标签页色
+    # 77. 标签页色
     def tab_active_border(self) -> str:
         return self.get_color('TAB_ACTIVE_BORDER')
     
-    # 75. 阴影与发光
+    # 78. 阴影与发光
     def shadow_light(self) -> str:
         return self.get_color('SHADOW_LIGHT')
     
-    # 76. 阴影与发光
+    # 79. 阴影与发光
     def shadow_medium(self) -> str:
         return self.get_color('SHADOW_MEDIUM')
     
-    # 77. 阴影与发光
+    # 80. 阴影与发光
     def shadow_heavy(self) -> str:
         return self.get_color('SHADOW_HEAVY')
     
-    # 78. 阴影与发光
+    # 81. 阴影与发光
     def glow_effect(self) -> str:
         return self.get_color('GLOW_EFFECT')
     
-    # 79. 阴影与发光
+    # 82. 阴影与发光
     def overlay_light(self) -> str:
         return self.get_color('OVERLAY_LIGHT')
     
-    # 80. 阴影与发光
+    # 83. 阴影与发光
     def overlay_medium(self) -> str:
         return self.get_color('OVERLAY_MEDIUM')
     
-    # 81. 阴影与发光
+    # 84. 阴影与发光
     def overlay_heavy(self) -> str:
         return self.get_color('OVERLAY_HEAVY')
     
-    # 82. 通用色
+    # 85. 通用色
     @staticmethod
     def transparent() -> str:
         return CommonColors.TRANSPARENT
     
-    # 83. 通用色
+    # 86. 通用色
     @staticmethod
     def black() -> str:
         return CommonColors.BLACK
     
-    # 84. 通用色
+    # 87. 通用色
     @staticmethod
     def white() -> str:
         return CommonColors.WHITE
 
 
-# 85. 全局单例访问函数
+# 88. 全局单例访问函数
 def get_theme_manager() -> ThemeManager:
     return ThemeManager.instance()
 

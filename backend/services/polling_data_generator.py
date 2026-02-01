@@ -104,6 +104,265 @@ class ValveSimulator:
 _valve_simulator = ValveSimulator()
 
 
+# ============================================================
+# 料仓 PLC 模拟器（全局状态，模拟真实的投料过程）
+# ============================================================
+class HopperPLCSimulator:
+    """料仓 PLC 模拟器
+    
+    模拟料仓的四种状态：
+    1. 静止 (idle): 料仓重量稳定，无操作
+    2. 上料中 (feeding): Q4.0=True, I4.6=True，重量增加
+    3. 排队等待上料 (waiting_feed): Q4.0=True, I4.6=False，等待上料
+    4. 排料中 (discharging): Q3.7=True, DB19.2.3=True，重量减少
+    """
+    
+    # 状态常量
+    STATE_IDLE = 'idle'              # 静止
+    STATE_FEEDING = 'feeding'        # 上料中
+    STATE_WAITING_FEED = 'waiting_feed'  # 排队等待上料
+    STATE_DISCHARGING = 'discharging'    # 排料中
+    
+    def __init__(self):
+        self.current_weight = 3500.0  # 当前料仓重量 (kg)
+        self.discharge_weight = 0.0   # 本次排料重量 (kg)
+        self.discharge_weight_ready = False  # 排料重量待读取标志
+        
+        # 当前状态
+        self.state = self.STATE_IDLE
+        
+        # 信号状态
+        self.is_discharging = False  # Q3.7 秤排料
+        self.is_requesting = False   # Q4.0 秤要料
+        self.is_feeding_back = False # I4.6 供料反馈
+        
+        # 状态切换时间
+        self.state_start_time = time.time()
+        self.state_duration = 0
+        
+        # 上次状态切换时间
+        self.last_state_change = time.time()
+        self.state_change_interval = random.uniform(15, 30)  # 15-30秒切换一次状态
+    
+    def update(self):
+        """更新料仓状态"""
+        current_time = time.time()
+        elapsed = current_time - self.state_start_time
+        
+        # 状态机
+        if self.state == self.STATE_IDLE:
+            # 静止状态：重量不变
+            self.is_discharging = False
+            self.is_requesting = False
+            self.is_feeding_back = False
+            self.discharge_weight_ready = False
+            
+            # 检查是否需要切换状态
+            if current_time - self.last_state_change > self.state_change_interval:
+                # 70% 概率排料，30% 概率上料
+                if random.random() < 0.7:
+                    self._switch_to_discharging()
+                else:
+                    self._switch_to_waiting_feed()
+                self.last_state_change = current_time
+                self.state_change_interval = random.uniform(15, 30)
+        
+        elif self.state == self.STATE_DISCHARGING:
+            # 排料中：Q3.7=True，重量逐渐减少
+            self.is_discharging = True
+            self.is_requesting = False
+            self.is_feeding_back = False
+            
+            # 排料持续 3-5 秒
+            if elapsed < self.state_duration:
+                # 重量逐渐减少（每次更新减少一点）
+                progress = elapsed / self.state_duration
+                # 计算当前应该减少的重量
+                target_weight = self.discharge_start_weight - self.discharge_weight
+                self.current_weight = self.discharge_start_weight - (self.discharge_weight * progress)
+                self.current_weight = max(2500, self.current_weight)
+            else:
+                # 排料结束
+                self.is_discharging = False
+                self.discharge_weight_ready = True  # 设置待读取标志
+                self.current_weight = self.discharge_start_weight - self.discharge_weight
+                self.current_weight = max(2500, self.current_weight)
+                
+                # 如果重量低于 3000kg，进入等待上料状态
+                if self.current_weight < 3000:
+                    self._switch_to_waiting_feed()
+                else:
+                    self._switch_to_idle()
+        
+        elif self.state == self.STATE_WAITING_FEED:
+            # 排队等待上料：Q4.0=True, I4.6=False，重量不变
+            self.is_discharging = False
+            self.is_requesting = True
+            self.is_feeding_back = False
+            self.discharge_weight_ready = False
+            
+            # 等待 2-5 秒后开始上料
+            if elapsed > self.state_duration:
+                self._switch_to_feeding()
+        
+        elif self.state == self.STATE_FEEDING:
+            # 上料中：Q4.0=True, I4.6=True，重量逐渐增加
+            self.is_discharging = False
+            self.is_requesting = True
+            self.is_feeding_back = True
+            self.discharge_weight_ready = False
+            
+            # 上料持续 5-8 秒
+            if elapsed < self.state_duration:
+                # 重量逐渐增加（每次更新增加一点）
+                progress = elapsed / self.state_duration
+                # 计算当前应该增加的重量
+                target_weight = self.feeding_start_weight + self.feeding_amount
+                self.current_weight = self.feeding_start_weight + (self.feeding_amount * progress)
+                self.current_weight = min(4900, self.current_weight)
+            else:
+                # 上料结束
+                self.is_requesting = False
+                self.is_feeding_back = False
+                self.current_weight = self.feeding_start_weight + self.feeding_amount
+                self.current_weight = min(4900, self.current_weight)
+                self._switch_to_idle()
+    
+    def _switch_to_idle(self):
+        """切换到静止状态"""
+        self.state = self.STATE_IDLE
+        self.state_start_time = time.time()
+        self.state_duration = 0
+    
+    def _switch_to_discharging(self):
+        """切换到排料中状态"""
+        self.state = self.STATE_DISCHARGING
+        self.state_start_time = time.time()
+        self.state_duration = random.uniform(3, 5)  # 3-5秒
+        self.discharge_weight = random.uniform(50, 200)  # 50-200kg
+        self.discharge_start_weight = self.current_weight  # 记录排料开始时的重量
+        self.discharge_weight_ready = False
+    
+    def _switch_to_waiting_feed(self):
+        """切换到排队等待上料状态"""
+        self.state = self.STATE_WAITING_FEED
+        self.state_start_time = time.time()
+        self.state_duration = random.uniform(2, 5)  # 等待 2-5 秒
+    
+    def _switch_to_feeding(self):
+        """切换到上料中状态"""
+        self.state = self.STATE_FEEDING
+        self.state_start_time = time.time()
+        self.state_duration = random.uniform(5, 8)  # 5-8秒
+        self.feeding_start_weight = self.current_weight  # 记录上料开始时的重量
+        self.feeding_amount = random.uniform(500, 1000)  # 上料量 500-1000kg
+    
+    def reset_discharge_flag(self):
+        """重置排料重量待读取标志（模拟 PLC 外部复位）"""
+        self.discharge_weight_ready = False
+    
+    def get_state(self) -> str:
+        """获取当前状态"""
+        return self.state
+
+
+# 全局料仓模拟器实例
+_hopper_plc_simulator = HopperPLCSimulator()
+
+
+def generate_mock_db18_data() -> bytes:
+    """生成 Mock DB18 数据 (48字节)
+    
+    数据结构:
+    - offset 0-3: 当前料仓重量 (DInt, kg)
+    - offset 16-19: 本次排料重量 (DInt, kg)
+    - offset 20-23: 排料结束重量 (DInt, kg)
+    - offset 24-27: 排料起始重量 (DInt, kg)
+    - offset 40-43: 上料上限值 (DInt, kg)
+    """
+    global _hopper_plc_simulator
+    _hopper_plc_simulator.update()
+    
+    data = bytearray(48)
+    
+    # 当前料仓重量 (offset 0-3)
+    struct.pack_into('>i', data, 0, int(_hopper_plc_simulator.current_weight))
+    
+    # 本次排料重量 (offset 16-19)
+    struct.pack_into('>i', data, 16, int(_hopper_plc_simulator.discharge_weight))
+    
+    # 排料结束重量 (offset 20-23)
+    end_weight = int(_hopper_plc_simulator.current_weight - _hopper_plc_simulator.discharge_weight)
+    struct.pack_into('>i', data, 20, end_weight)
+    
+    # 排料起始重量 (offset 24-27)
+    start_weight = int(_hopper_plc_simulator.current_weight)
+    struct.pack_into('>i', data, 24, start_weight)
+    
+    # 上料上限值 (offset 40-43)
+    struct.pack_into('>i', data, 40, 4900)
+    
+    return bytes(data)
+
+
+def generate_mock_db19_data() -> bytes:
+    """生成 Mock DB19 数据 (4字节)
+    
+    数据结构:
+    - offset 2.3: 本次排料重量待读取标志 (Bool)
+    """
+    global _hopper_plc_simulator
+    
+    data = bytearray(4)
+    
+    # offset 2.3: 本次排料重量待读取标志
+    if _hopper_plc_simulator.discharge_weight_ready:
+        data[2] |= (1 << 3)  # 设置 bit 3
+        # 模拟读取后自动复位
+        _hopper_plc_simulator.reset_discharge_flag()
+    
+    return bytes(data)
+
+
+def generate_mock_q_data() -> bytes:
+    """生成 Mock Q区数据 (2字节: Q3, Q4)
+    
+    数据结构:
+    - Q3.7: 秤排料信号
+    - Q4.0: 秤要料信号
+    """
+    global _hopper_plc_simulator
+    
+    data = bytearray(2)
+    
+    # Q3.7: 秤排料
+    if _hopper_plc_simulator.is_discharging:
+        data[0] |= (1 << 7)
+    
+    # Q4.0: 秤要料
+    if _hopper_plc_simulator.is_requesting:
+        data[1] |= (1 << 0)
+    
+    return bytes(data)
+
+
+def generate_mock_i_data() -> bytes:
+    """生成 Mock I区数据 (1字节: I4)
+    
+    数据结构:
+    - I4.6: 供料反馈信号
+    """
+    global _hopper_plc_simulator
+    
+    data = bytearray(1)
+    
+    # I4.6: 供料反馈
+    if _hopper_plc_simulator.is_feeding_back:
+        data[0] |= (1 << 6)
+    
+    return bytes(data)
+
+
 def generate_mock_db32_data() -> bytes:
     """生成 Mock DB32 数据 (21字节)
     
@@ -382,99 +641,4 @@ def generate_mock_db41_data() -> bytes:
     return bytes(data)
 
 
-# ============================================================
-# 料仓重量模拟器（全局状态，模拟真实的上料和下料过程）
-# ============================================================
-class HopperWeightSimulator:
-    """料仓重量模拟器
-    
-    模拟真实的上料和下料过程：
-    - 上料阶段：重量从 200kg 缓慢增加到 4800kg（约 2-3 分钟）
-    - 稳定阶段：重量保持在 4500-4900kg（约 30-60 秒）
-    - 下料阶段：重量从 4800kg 缓慢减少到 200kg（约 2-3 分钟）
-    - 空仓阶段：重量保持在 200-500kg（约 30-60 秒）
-    """
-    
-    def __init__(self):
-        self.current_weight = 300.0  # 当前重量 (kg)
-        self.target_weight = 4800.0  # 目标重量 (kg)
-        self.phase = "loading"  # 当前阶段: loading, stable_full, unloading, stable_empty
-        self.phase_start_time = time.time()
-        self.phase_duration = random.uniform(120, 180)  # 阶段持续时间（秒）
-        
-        # 上料/下料速度 (kg/s)
-        self.loading_speed = 30.0  # 30 kg/s (约 2.5 分钟从 200kg 到 4800kg)
-        self.unloading_speed = 25.0  # 25 kg/s (约 3 分钟从 4800kg 到 200kg)
-    
-    def update(self) -> float:
-        """更新料仓重量并返回当前值"""
-        current_time = time.time()
-        elapsed = current_time - self.phase_start_time
-        
-        if self.phase == "loading":
-            # 上料阶段：重量缓慢增加
-            self.current_weight += self.loading_speed * 0.5  # 每 0.5s 增加
-            
-            # 到达目标重量，切换到稳定阶段
-            if self.current_weight >= self.target_weight:
-                self.current_weight = self.target_weight
-                self.phase = "stable_full"
-                self.phase_start_time = current_time
-                self.phase_duration = random.uniform(30, 60)  # 稳定 30-60 秒
-        
-        elif self.phase == "stable_full":
-            # 稳定阶段（满仓）：重量在 4500-4900kg 之间小幅波动
-            self.current_weight = random.uniform(4500, 4900)
-            
-            # 稳定一段时间后，开始下料
-            if elapsed > self.phase_duration:
-                self.phase = "unloading"
-                self.phase_start_time = current_time
-                self.phase_duration = random.uniform(120, 180)
-        
-        elif self.phase == "unloading":
-            # 下料阶段：重量缓慢减少
-            self.current_weight -= self.unloading_speed * 0.5  # 每 0.5s 减少
-            
-            # 到达最低重量，切换到空仓阶段
-            if self.current_weight <= 200:
-                self.current_weight = 200
-                self.phase = "stable_empty"
-                self.phase_start_time = current_time
-                self.phase_duration = random.uniform(30, 60)  # 稳定 30-60 秒
-        
-        elif self.phase == "stable_empty":
-            # 稳定阶段（空仓）：重量在 200-500kg 之间小幅波动
-            self.current_weight = random.uniform(200, 500)
-            
-            # 稳定一段时间后，开始上料
-            if elapsed > self.phase_duration:
-                self.phase = "loading"
-                self.phase_start_time = current_time
-                self.phase_duration = random.uniform(120, 180)
-        
-        return self.current_weight
-    
-    def is_discharging(self) -> bool:
-        """判断是否正在下料"""
-        return self.phase == "unloading"
 
-
-# 全局料仓重量模拟器实例
-_hopper_simulator = HopperWeightSimulator()
-
-
-def generate_mock_weight_data() -> Dict[str, Any]:
-    """生成 Mock 料仓重量数据（模拟真实的上料和下料过程）
-    
-    Returns:
-        与 read_hopper_weight() 相同格式的结果
-    """
-    from backend.tools.operation_modbus_weight_reader import mock_read_weight
-    
-    # 使用模拟器生成缓慢变化的重量
-    global _hopper_simulator
-    weight = _hopper_simulator.update()
-    
-    # 转换为整数（mock_read_weight 需要 int）
-    return mock_read_weight(weight=int(weight))

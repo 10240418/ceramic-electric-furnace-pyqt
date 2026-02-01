@@ -97,7 +97,7 @@ class SwitchTheme(QWidget):
             self.dark_button.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {tm.border_glow()};
-                    color: {tm.bg_dark()};
+                    color: {tm.text_on_primary()};
                     border: none;
                     border-radius: 4px;
                     font-size: 14px;
@@ -126,7 +126,7 @@ class SwitchTheme(QWidget):
             self.light_button.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {tm.border_glow()};
-                    color: {tm.bg_dark()};
+                    color: {tm.text_on_primary()};
                     border: none;
                     border-radius: 4px;
                     font-size: 14px;

@@ -120,7 +120,7 @@ class DialogSetLimit(QDialog):
                 return
             
             # 调用后端服务写入 PLC
-            from backend.services.input.hopper_input_max import set_hopper_upper_limit
+            from backend.services.hopper.input_service import set_hopper_upper_limit
             
             logger.info(f"准备写入料仓上限值: {limit_value} kg")
             

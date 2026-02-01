@@ -162,7 +162,7 @@ class BatchService:
         """重置累计器（新批次时调用）"""
         # 重置冷却水累计流量
         try:
-            from backend.services.cooling_water_calculator import get_cooling_water_calculator
+            from backend.services.db32.cooling_water_calculator import get_cooling_water_calculator
             cooling_calc = get_cooling_water_calculator()
             cooling_calc.reset_for_new_batch(batch_code)
         except Exception as e:
@@ -170,15 +170,15 @@ class BatchService:
         
         # 重置投料累计器
         try:
-            from backend.services.feeding_accumulator import get_feeding_accumulator
-            feeding_acc = get_feeding_accumulator()
+            from backend.services.hopper.accumulator import get_feeding_plc_accumulator
+            feeding_acc = get_feeding_plc_accumulator()
             feeding_acc.reset_for_new_batch(batch_code)
         except Exception as e:
             print(f" 重置投料累计器失败: {e}")
         
         # 重置能耗计算器
         try:
-            from backend.services.power_energy_calculator import get_power_energy_calculator
+            from backend.services.db1.power_energy_calculator import get_power_energy_calculator
             power_calc = get_power_energy_calculator()
             power_calc.reset_for_new_batch(batch_code)
         except Exception as e:
@@ -277,6 +277,57 @@ class BatchService:
             "batch_code": self._batch_code,
             "terminate_time": self._pause_time.isoformat()
         }
+    
+    async def force_flush_all_caches(self) -> dict:
+        """
+        强制刷新所有缓存，立即写入数据库
+        
+        用于终止记录时，确保所有缓存数据都写入数据库
+        
+        Returns:
+            {"success": bool, "message": str, "flushed": list}
+        """
+        flushed_services = []
+        errors = []
+        
+        try:
+            # 1. 刷新投料累计器缓存
+            try:
+                from backend.services.hopper.accumulator import get_feeding_plc_accumulator
+                feeding_acc = get_feeding_plc_accumulator()
+                await feeding_acc.force_flush()
+                flushed_services.append("投料累计器")
+                print(f"[OK] 投料累计器缓存已刷新")
+            except Exception as e:
+                errors.append(f"投料累计器: {e}")
+                print(f"[ERROR] 投料累计器刷新失败: {e}")
+            
+            # 2. 冷却水计算器（无缓存，跳过）
+            # 冷却水数据是实时计算并批量写入的，无需单独刷新
+            
+            # 3. 能耗计算器（无缓存，跳过）
+            # 能耗数据是实时计算并批量写入的，无需单独刷新
+            
+            if errors:
+                return {
+                    "success": False,
+                    "message": f"部分缓存刷新失败: {', '.join(errors)}",
+                    "flushed": flushed_services
+                }
+            else:
+                return {
+                    "success": True,
+                    "message": f"所有缓存已刷新: {', '.join(flushed_services)}",
+                    "flushed": flushed_services
+                }
+        
+        except Exception as e:
+            print(f"[ERROR] 强制刷新缓存异常: {e}")
+            return {
+                "success": False,
+                "message": f"刷新缓存异常: {e}",
+                "flushed": flushed_services
+            }
     
     def stop(self) -> dict:
         """

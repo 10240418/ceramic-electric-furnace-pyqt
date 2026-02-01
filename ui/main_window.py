@@ -457,7 +457,7 @@ class ConfirmExitDialog(QDialog):
             
             QPushButton#btnConfirm {{
                 background: {colors.GLOW_PRIMARY};
-                color: {colors.TEXT_INVERSE};
+                color: {colors.TEXT_ON_PRIMARY};
                 border: 2px solid {colors.GLOW_PRIMARY};
                 border-radius: 8px;
                 padding: 10px;

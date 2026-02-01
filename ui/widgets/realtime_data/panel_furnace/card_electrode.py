@@ -97,7 +97,7 @@ class CardElectrode(QFrame):
         old_current_status = self.current_status
         old_voltage_status = self.voltage_status
         
-        # 检查电极深度
+        # 检查电极深度（AlarmChecker 内部会检查批次状态）
         self.depth_status = self.alarm_checker.check_value(f'electrode_depth_{phase}', depth_mm)
         
         # 检查弧流
@@ -106,22 +106,26 @@ class CardElectrode(QFrame):
         # 检查弧压
         self.voltage_status = self.alarm_checker.check_value(f'arc_voltage_{phase}', voltage_v)
         
-        # 如果从非报警变为报警，播放声音
+        # 如果从非报警变为报警，播放声音（只有在记录时才播放）
         has_old_alarm = any([self.alarm_checker.should_blink(s) for s in [old_depth_status, old_current_status, old_voltage_status]])
         has_new_alarm = any([self.alarm_checker.should_blink(s) for s in [self.depth_status, self.current_status, self.voltage_status]])
         
         if not has_old_alarm and has_new_alarm:
-            # 播放报警声音（通过全局管理器）
+            # 播放报警声音（通过全局管理器，内部会检查批次状态）
             sound_manager = get_alarm_sound_manager()
             sound_manager.play_alarm()
         
         # 更新样式
         self.update_alarm_styles()
         
-        # 启动或停止闪烁
+        # 启动或停止闪烁（只有在记录时才闪烁）
         need_blink = (self.alarm_checker.should_blink(self.depth_status) or 
                       self.alarm_checker.should_blink(self.current_status) or 
                       self.alarm_checker.should_blink(self.voltage_status))
+        
+        # 检查是否正在记录
+        if not self._is_recording():
+            need_blink = False
         
         if need_blink and not self.blink_timer.isActive():
             self.blink_timer.start(500)  # 500ms 闪烁一次
@@ -129,6 +133,16 @@ class CardElectrode(QFrame):
             self.blink_timer.stop()
             self.blink_visible = True
             self.update_alarm_styles()
+    
+    # 3.5 检查是否正在记录
+    def _is_recording(self) -> bool:
+        """检查是否正在记录（有批次号且正在冶炼）"""
+        try:
+            from backend.services.batch_service import get_batch_service
+            batch_service = get_batch_service()
+            return batch_service.is_smelting
+        except Exception as e:
+            return False
     
     # 4. 切换闪烁状态
     def toggle_blink(self):

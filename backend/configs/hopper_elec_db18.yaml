@@ -17,10 +17,10 @@ system:
 # ============================================================
 # 数据结构概述:
 #   - offset 0-3: 当前料仓重量 (DInt, kg)
-#   - offset 4-7: 本次排料重量 (DInt, kg)
-#   - offset 8-11: 排料结束重量 (DInt, kg)
-#   - offset 12-15: 排料起始重量 (DInt, kg)
-#   - offset 16-39: 保留字段
+#   - offset 16-19: 本次排料重量 (DInt, kg)
+#   - offset 20-23: 排料结束重量 (DInt, kg)
+#   - offset 24-27: 排料起始重量 (DInt, kg)
+#   - offset 28-39: 保留字段
 #   - offset 40-43: 上料上限值 (DInt, kg) ⭐ 前端显示用
 #   - offset 44-47: 保留字段
 # ============================================================
@@ -45,22 +45,22 @@ db18_weight_var:
         offset: 0.0
     
     # ----------------------
-    # 本次排料重量 (DInt 类型, 4 bytes) offset 4-7
+    # 本次排料重量 (DInt 类型, 4 bytes) offset 16-19
     # ----------------------
     - name: discharge_weight
-      offset: 4
+      offset: 16
       type: DINT
       unit: "kg"
-      description: 本次排料重量
+      description: 本次排料重量 (PLC计算完成后写入)
       conversion:
         factor: 1.0
         offset: 0.0
     
     # ----------------------
-    # 排料结束重量 (DInt 类型, 4 bytes) offset 8-11
+    # 排料结束重量 (DInt 类型, 4 bytes) offset 20-23
     # ----------------------
     - name: discharge_end_weight
-      offset: 8
+      offset: 20
       type: DINT
       unit: "kg"
       description: 排料结束重量
@@ -69,10 +69,10 @@ db18_weight_var:
         offset: 0.0
     
     # ----------------------
-    # 排料起始重量 (DInt 类型, 4 bytes) offset 12-15
+    # 排料起始重量 (DInt 类型, 4 bytes) offset 24-27
     # ----------------------
     - name: discharge_start_weight
-      offset: 12
+      offset: 24
       type: DINT
       unit: "kg"
       description: 排料起始重量

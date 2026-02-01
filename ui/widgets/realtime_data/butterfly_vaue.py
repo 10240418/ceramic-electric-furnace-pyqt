@@ -147,7 +147,7 @@ class IndicatorValve(QFrame):
             return f"""
                 QLabel#statusBtn {{
                     background: {colors.GLOW_PRIMARY};
-                    color: {colors.TEXT_INVERSE};
+                    color: {colors.TEXT_ON_PRIMARY};
                     border: 1px solid {colors.GLOW_PRIMARY};
                     border-radius: 0px;
                     padding: 0px;

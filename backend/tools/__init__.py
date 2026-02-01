@@ -9,15 +9,6 @@ from .converter_length import (
 
 from .converter_furnace import FurnaceConverter
 
-from .operation_modbus_weight_reader import (
-    read_hopper_weight,
-    get_net_weight,
-    parse_response_hex,
-    mock_read_weight,
-    build_read_request,
-    parse_weight_response
-)
-
 from .converter_flow import (
     FlowConverter,
     FlowData,
@@ -70,13 +61,6 @@ __all__ = [
     'convert_all_electrode_depths',
     # 电炉数据转换器
     'FurnaceConverter',
-    # 料仓净重 Modbus 读取
-    'read_hopper_weight',
-    'get_net_weight',
-    'parse_response_hex',
-    'mock_read_weight',
-    'build_read_request',
-    'parse_weight_response',
     # 流量计转换器
     'FlowConverter',
     'FlowData',

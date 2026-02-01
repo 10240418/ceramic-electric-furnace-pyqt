@@ -39,9 +39,12 @@ class DarkColors:
     TEXT_TERTIARY = '#6e7681'   # 三级文字
     TEXT_MUTED = '#484f58'      # 弱化文字
     TEXT_DISABLED = '#3d444d'   # 禁用文字
-    TEXT_INVERSE = '#0d1117'    # 反色文字（用于深色背景上的浅色文字）
+    TEXT_INVERSE = '#0d1117'    # 反色文字（用于浅色背景上的深色文字）
     TEXT_LINK = '#00d4ff'       # 链接文字
     TEXT_ACCENT = '#00f0ff'     # 强调文字
+    TEXT_ON_PRIMARY = '#0d1117' # 主色背景上的文字（深色，用于青色背景）
+    TEXT_SELECTED = '#00d4ff'   # 选中状态文字（发光青色）
+    TEXT_FOCUS = '#00f0ff'      # 焦点状态文字（浅青色）
     
     # ===== 状态色 =====
     STATUS_NORMAL = '#00ff88'    # 正常状态（绿色）
@@ -190,6 +193,9 @@ class LightColors:
     TEXT_INVERSE = '#ffffff'    # 反色文字（用于深色背景上的浅色文字）
     TEXT_LINK = '#007663'       # 链接文字（深绿）
     TEXT_ACCENT = '#008b67'     # 强调文字（中绿）
+    TEXT_ON_PRIMARY = '#ffffff' # 主色背景上的文字（白色，用于深绿背景）
+    TEXT_SELECTED = '#007663'   # 选中状态文字（深绿）
+    TEXT_FOCUS = '#008b67'      # 焦点状态文字（中绿）
     
     # ===== 状态色 =====
     STATUS_NORMAL = '#008b67'    # 正常状态（绿色）

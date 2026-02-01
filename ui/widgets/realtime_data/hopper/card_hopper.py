@@ -119,7 +119,7 @@ class CardHopper(QFrame):
     
     # 4. 更新数据
     def update_data(self, hopper_weight: float, feeding_total: float, 
-                    upper_limit: float, is_feeding: bool = False):
+                    upper_limit: float, state: str = 'idle'):
         """
         更新料仓数据
         
@@ -127,12 +127,15 @@ class CardHopper(QFrame):
             hopper_weight: 料仓重量（kg）
             feeding_total: 投料累计（kg）
             upper_limit: 料仓上限（kg）
-            is_feeding: 是否正在投料
+            state: 料仓状态
+                - 'idle': 静止
+                - 'feeding': 上料中
+                - 'waiting_feed': 排队等待上料
+                - 'discharging': 排料中
         """
         self.hopper_weight = hopper_weight
         self.feeding_total = feeding_total
         self.upper_limit = upper_limit
-        self.is_feeding = is_feeding
         
         # 更新投料累计
         feeding_value_label = self.feeding_total_widget.findChild(QLabel, "dataValue")
@@ -149,34 +152,49 @@ class CardHopper(QFrame):
         if limit_value_label:
             limit_value_label.setText(str(int(upper_limit)))
         
-        # 更新投料状态
-        status_text = "投料状态: 投料中" if is_feeding else "投料状态: 未投料"
-        self.status_label.setText(status_text)
-        
-        # 根据状态改变颜色
+        # 根据状态显示不同的文字和颜色
         colors = self.theme_manager.get_colors()
-        if is_feeding:
-            self.status_label.setStyleSheet(f"""
-                QLabel#statusLabel {{
-                    background: {colors.BG_MEDIUM};
-                    color: {colors.GLOW_PRIMARY};
-                    font-size: 14px;
-                    font-weight: bold;
-                    border: 1px solid {colors.BORDER_GLOW};
-                    border-radius: 4px;
-                }}
-            """)
-        else:
-            self.status_label.setStyleSheet(f"""
-                QLabel#statusLabel {{
-                    background: {colors.BG_MEDIUM};
-                    color: {colors.TEXT_SECONDARY};
-                    font-size: 14px;
-                    font-weight: bold;
-                    border: 1px solid {colors.BORDER_DARK};
-                    border-radius: 4px;
-                }}
-            """)
+        
+        state_config = {
+            'idle': {
+                'text': '投料状态: 静止',
+                'color': colors.TEXT_SECONDARY,
+                'border': colors.BORDER_DARK,
+                'bg': colors.BG_MEDIUM
+            },
+            'feeding': {
+                'text': '投料状态: 上料中',
+                'color': colors.GLOW_PRIMARY,
+                'border': colors.BORDER_GLOW,
+                'bg': colors.BG_MEDIUM
+            },
+            'waiting_feed': {
+                'text': '投料状态: 排队等待上料',
+                'color': '#FFA500',  # 橙色
+                'border': '#FFA500',
+                'bg': colors.BG_MEDIUM
+            },
+            'discharging': {
+                'text': '投料状态: 排料中',
+                'color': '#00FF00',  # 绿色
+                'border': '#00FF00',
+                'bg': colors.BG_MEDIUM
+            }
+        }
+        
+        config = state_config.get(state, state_config['idle'])
+        
+        self.status_label.setText(config['text'])
+        self.status_label.setStyleSheet(f"""
+            QLabel#statusLabel {{
+                background: {config['bg']};
+                color: {config['color']};
+                font-size: 14px;
+                font-weight: bold;
+                border: 1px solid {config['border']};
+                border-radius: 4px;
+            }}
+        """)
     
     # 5. 点击查看详情按钮
     def on_detail_clicked(self):

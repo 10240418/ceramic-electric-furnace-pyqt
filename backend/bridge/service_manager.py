@@ -10,10 +10,17 @@ from backend.bridge.data_cache import get_data_cache
 from backend.bridge.data_bridge import get_data_bridge
 
 
+# 全局服务管理器实例
+_service_manager_instance: Optional['ServiceManager'] = None
+
+
 class ServiceManager:
     
     # 1. 初始化服务管理器
     def __init__(self, use_mock: bool = False):
+        global _service_manager_instance
+        _service_manager_instance = self
+        
         logger.info(f"ServiceManager 开始初始化 (Mock模式: {use_mock})")
         
         self.use_mock = use_mock
@@ -155,4 +162,13 @@ class ServiceManager:
             "polling_loops": polling_status,
             "batch_status": batch_status
         }
+
+
+# ============================================================
+# 全局单例获取函数
+# ============================================================
+
+def get_service_manager() -> Optional[ServiceManager]:
+    """获取服务管理器单例"""
+    return _service_manager_instance
 
