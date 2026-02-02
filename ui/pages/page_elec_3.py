@@ -30,40 +30,40 @@ class PageElec3(QWidget):
         self.batch_service = get_batch_service()
         self.data_cache = get_data_cache()
         
-        # 模拟数据
+        # 实时数据（初始值全部为 0，从后端读取真实数据）
         self.mock_data = {
             'batch_no': '',
             'start_time': '',
             'run_duration': '00:00:00',
             'is_smelting': False,
             'electrodes': [
-                {'depth_mm': -150.0, 'current_a': 2989.0, 'voltage_v': 145.0},
-                {'depth_mm': -150.0, 'current_a': 3050.0, 'voltage_v': 148.0},
-                {'depth_mm': -150.0, 'current_a': 2950.0, 'voltage_v': 142.0},
+                {'depth_mm': 0.0, 'current_a': 0.0, 'voltage_v': 0.0},
+                {'depth_mm': 0.0, 'current_a': 0.0, 'voltage_v': 0.0},
+                {'depth_mm': 0.0, 'current_a': 0.0, 'voltage_v': 0.0},
             ],
             'valves': [
-                {'status': '01', 'open_percent': 75.0},
-                {'status': '00', 'open_percent': 50.0},
-                {'status': '10', 'open_percent': 25.0},
-                {'status': '01', 'open_percent': 90.0},
+                {'status': '00', 'open_percent': 0.0},
+                {'status': '00', 'open_percent': 0.0},
+                {'status': '00', 'open_percent': 0.0},
+                {'status': '00', 'open_percent': 0.0},
             ],
             'cooling_shell': {
-                'flow': 3.5,
-                'pressure': 180.0,
-                'total': 125.5,
+                'flow': 0.0,
+                'pressure': 0.0,
+                'total': 0.0,
             },
             'cooling_cover': {
-                'flow': 2.8,
-                'pressure': 165.0,
-                'total': 98.3,
+                'flow': 0.0,
+                'pressure': 0.0,
+                'total': 0.0,
             },
             'hopper': {
-                'weight': 1250.0,
-                'feeding_total': 3580.0,
-                'upper_limit': 5000.0,
+                'weight': 0.0,
+                'feeding_total': 0.0,
+                'upper_limit': 5000.0,  # 上限保持默认值
             },
-            'power': 1850.5,      # 总功率 kW
-            'energy': 12580.3,    # 总能耗 kWh
+            'power': 0.0,      # 总功率 kW
+            'energy': 0.0,     # 总能耗 kWh
         }
         
         self.init_ui()
@@ -72,13 +72,37 @@ class PageElec3(QWidget):
         # 监听主题变化
         self.theme_manager.theme_changed.connect(self.on_theme_changed)
         
-        # 启动数据更新定时器（0.5s 刷新一次）
-        self.update_timer = QTimer()
-        self.update_timer.timeout.connect(self.update_realtime_data)
-        self.update_timer.start(500)  # 500ms = 0.5s
+        # 启动卡片数据更新定时器（固定 0.5s 刷新一次）
+        self.card_update_timer = QTimer()
+        self.card_update_timer.timeout.connect(self.update_realtime_data)
+        self.card_update_timer.start(500)  # 500ms = 0.5s（固定，不受轮询速度影响）
+        
+        # 启动图表数据更新定时器（跟随轮询速度）
+        self.chart_update_timer = QTimer()
+        self.chart_update_timer.timeout.connect(self.update_chart_data)
+        
+        # 从配置获取初始刷新间隔
+        from backend.config.polling_config import get_polling_config
+        self.polling_config = get_polling_config()
+        initial_interval = int(self.polling_config.get_polling_interval() * 1000)  # 转换为毫秒
+        self.chart_update_timer.start(initial_interval)
+        
+        # 监听轮询速度变化
+        self.polling_config.register_callback(self.on_polling_speed_changed)
         
         # 初始化批次状态（只在启动时更新一次）
+        # 这里会自动同步后端状态，如果后端正在冶炼，UI 会自动恢复
         self.update_batch_status()
+        
+        # 如果后端正在冶炼，切换 DB1 到高速模式
+        try:
+            status = self.batch_service.get_status()
+            if status['is_smelting']:
+                from backend.services.polling_loops_v2 import switch_db1_speed
+                switch_db1_speed(high_speed=True)
+                logger.info(f"检测到后端正在冶炼（批次: {status['batch_code']}），已切换 DB1 到高速模式")
+        except Exception as e:
+            logger.error(f"检查后端状态失败: {e}", exc_info=True)
     
     # 2. 初始化 UI
     def init_ui(self):
@@ -225,11 +249,11 @@ class PageElec3(QWidget):
         # 将按钮添加到标题栏右边
         self.hopper_panel.add_header_action(detail_btn)
         
-        # 使用 CardData 显示4行数据
+        # 使用 CardData 显示4行数据（初始值为 0）
         items = [
             DataItem(
                 label="投料状态",
-                value="未投料",
+                value="静止",
                 unit="",
                 icon="📊"
             ),
@@ -241,13 +265,13 @@ class PageElec3(QWidget):
             ),
             DataItem(
                 label="料仓重量",
-                value="1250",
+                value="0",
                 unit="kg",
                 icon="⚖️"
             ),
             DataItem(
                 label="投料累计",
-                value="3580",
+                value="0",
                 unit="kg",
                 icon="⬇️"
             ),
@@ -268,19 +292,20 @@ class PageElec3(QWidget):
         items = [
             DataItem(
                 label="冷却水流速",
-                value="3.50",
+                value="0.00",
                 unit="m³/h",
                 icon="💧"
             ),
             DataItem(
                 label="冷却水水压",
-                value="180.0",
+                value="0.0",
                 unit="kPa",
-                icon="💦"
+                icon="💦",
+                alarm_param="cooling_pressure_shell"  # 报警参数
             ),
             DataItem(
                 label="冷却水用量",
-                value="125.50",
+                value="0.00",
                 unit="m³",
                 icon="🌊"
             ),
@@ -301,23 +326,25 @@ class PageElec3(QWidget):
                 label="过滤器压差",
                 value="0.0",
                 unit="kPa",
-                icon="🔧"
+                icon="🔧",
+                alarm_param="filter_pressure_diff"  # 报警参数
             ),
             DataItem(
                 label="冷却水流速",
-                value="2.80",
+                value="0.00",
                 unit="m³/h",
                 icon="💧"
             ),
             DataItem(
                 label="冷却水水压",
-                value="165.0",
+                value="0.0",
                 unit="kPa",
-                icon="💦"
+                icon="💦",
+                alarm_param="cooling_pressure_cover"  # 报警参数
             ),
             DataItem(
                 label="冷却水用量",
-                value="98.30",
+                value="0.00",
                 unit="m³",
                 icon="🌊"
             ),
@@ -607,10 +634,80 @@ class PageElec3(QWidget):
             self.mock_data['run_duration']
         )
     
+    # 10.1 更新图表数据（跟随轮询速度）
+    def update_chart_data(self):
+        """
+        更新图表数据（刷新频率跟随轮询速度）
+        - 0.2s 轮询时，图表每 0.2s 刷新
+        - 0.5s 轮询时，图表每 0.5s 刷新
+        """
+        try:
+            # 从 DataCache 读取弧流数据
+            arc_data = self.data_cache.get_arc_data()
+            
+            if arc_data:
+                arc_current = arc_data.get('arc_current', {})
+                setpoints = arc_data.get('setpoints', {})
+                deadzone = arc_data.get('manual_deadzone_percent', 15.0)
+                
+                # 构建电极数据
+                electrodes = []
+                for phase in ['U', 'V', 'W']:
+                    current = arc_current.get(phase, 0.0)
+                    setpoint = setpoints.get(phase, 0.0)
+                    
+                    electrodes.append(ElectrodeData(
+                        f"{phase}相",
+                        setpoint,  # 设定值
+                        current    # 实际值
+                    ))
+                
+                # 更新电极电流图表
+                self.electrode_chart.update_data(electrodes, deadzone)
+        
+        except Exception as e:
+            logger.error(f"更新图表数据异常: {e}", exc_info=True)
+    
+    # 10.2 轮询速度变化回调
+    def on_polling_speed_changed(self, speed):
+        """轮询速度变化时，更新图表刷新间隔
+        
+        Args:
+            speed: "0.2s" 或 "0.5s"
+        """
+        if speed == "0.2s":
+            interval_ms = 200
+        else:
+            interval_ms = 500
+        
+        # 更新图表定时器间隔
+        self.chart_update_timer.setInterval(interval_ms)
+        logger.info(f"图表刷新间隔已更新: {interval_ms}ms")
+    
     # 11. 开始冶炼（显示批次配置对话框）
     def on_start_smelting(self):
         """点击开始冶炼按钮，弹出批次配置对话框"""
         logger.info("点击开始冶炼按钮")
+        
+        # 先检查后端状态，如果已经在冶炼，则同步 UI 状态
+        try:
+            status = self.batch_service.get_status()
+            if status['is_smelting']:
+                logger.warning(f"后端已在冶炼中，批次号: {status['batch_code']}，同步 UI 状态")
+                
+                # 同步 UI 状态
+                self.update_batch_status()
+                
+                # 提示用户
+                from ui.widgets.common.dialog_message import show_warning
+                show_warning(
+                    self,
+                    "冶炼已在进行中",
+                    f"当前批次: {status['batch_code']}\n已运行: {int(status['elapsed_seconds'])}秒\n\nUI 状态已同步"
+                )
+                return
+        except Exception as e:
+            logger.error(f"检查后端状态失败: {e}", exc_info=True)
         
         # 创建批次配置对话框
         dialog = DialogBatchConfig(furnace_number=3, parent=self)
@@ -920,5 +1017,43 @@ class PageElec3(QWidget):
             ),
         ]
         self.hopper_card.update_items(hopper_items)
+    
+    # 18. 页面隐藏时停止定时器（防止定时器泄漏）
+    def hideEvent(self, event):
+        """页面隐藏时停止定时器"""
+        logger.info("PageElec3 隐藏，停止定时器")
+        self.card_update_timer.stop()
+        self.chart_update_timer.stop()
+        super().hideEvent(event)
+    
+    # 19. 页面显示时启动定时器
+    def showEvent(self, event):
+        """页面显示时启动定时器"""
+        logger.info("PageElec3 显示，启动定时器")
+        self.card_update_timer.start(500)
+        
+        # 图表定时器使用当前配置的间隔
+        interval_ms = int(self.polling_config.get_polling_interval() * 1000)
+        self.chart_update_timer.start(interval_ms)
+        
+        super().showEvent(event)
+    
+    # 20. 页面销毁时清理资源
+    def closeEvent(self, event):
+        """页面关闭时清理资源"""
+        logger.info("PageElec3 关闭，清理资源")
+        
+        # 停止定时器
+        self.card_update_timer.stop()
+        self.chart_update_timer.stop()
+        
+        # 断开信号连接
+        try:
+            self.theme_manager.theme_changed.disconnect(self.on_theme_changed)
+            self.polling_config.unregister_callback(self.on_polling_speed_changed)
+        except:
+            pass
+        
+        super().closeEvent(event)
     
 

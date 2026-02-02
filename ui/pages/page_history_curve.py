@@ -3,7 +3,7 @@
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                               QPushButton, QScrollArea, QSizePolicy, QFileDialog, QMessageBox)
-from PyQt6.QtCore import Qt, QTimer, QDateTime
+from PyQt6.QtCore import Qt, QTimer, QDateTime, QThread, pyqtSignal
 from ui.styles.themes import ThemeManager
 from ui.widgets.common.panel_tech import PanelTech
 from ui.widgets.history_curve.chart_line import ChartLine
@@ -15,6 +15,72 @@ from backend.services.data_exporter import get_data_exporter
 from datetime import datetime, timedelta
 from loguru import logger
 import random
+
+
+# ============================================================
+# 历史数据查询线程（后台执行，避免阻塞 UI）
+# ============================================================
+class HistoryQueryThread(QThread):
+    """历史数据查询线程"""
+    
+    # 查询完成信号
+    query_finished = pyqtSignal(dict)
+    # 查询失败信号
+    query_failed = pyqtSignal(str)
+    
+    def __init__(self, history_service, batch_code: str, start_time: datetime, end_time: datetime, interval: str):
+        super().__init__()
+        self.history_service = history_service
+        self.batch_code = batch_code
+        self.start_time = start_time
+        self.end_time = end_time
+        self.interval = interval
+    
+    def run(self):
+        """在后台线程中执行查询"""
+        try:
+            logger.info(f"后台线程开始查询批次 {self.batch_code} 的历史数据")
+            
+            # 1. 查询弧流弧压数据
+            arc_data = self.history_service.query_arc_data(
+                self.batch_code, self.start_time, self.end_time, self.interval
+            )
+            
+            # 2. 查询电极深度数据
+            electrode_data = self.history_service.query_electrode_depth(
+                self.batch_code, self.start_time, self.end_time, self.interval
+            )
+            
+            # 3. 查询功率能耗数据
+            power_data = self.history_service.query_power_energy(
+                self.batch_code, self.start_time, self.end_time, self.interval
+            )
+            
+            # 4. 查询料仓数据
+            hopper_data = self.history_service.query_hopper_data(
+                self.batch_code, self.start_time, self.end_time, self.interval
+            )
+            
+            # 5. 查询冷却水数据
+            cooling_data = self.history_service.query_cooling_water(
+                self.batch_code, self.start_time, self.end_time, self.interval
+            )
+            
+            # 汇总结果
+            result = {
+                "arc_data": arc_data,
+                "electrode_data": electrode_data,
+                "power_data": power_data,
+                "hopper_data": hopper_data,
+                "cooling_data": cooling_data
+            }
+            
+            logger.info("后台线程查询完成，发送结果到主线程")
+            self.query_finished.emit(result)
+            
+        except Exception as e:
+            logger.error(f"后台线程查询失败: {e}", exc_info=True)
+            self.query_failed.emit(str(e))
 
 
 class PageHistoryCurve(QWidget):
@@ -62,12 +128,15 @@ class PageHistoryCurve(QWidget):
         # 监听主题变化
         self.theme_manager.theme_changed.connect(self.on_theme_changed)
         
-        # 延迟加载数据（等待 UI 渲染完成）
-        QTimer.singleShot(500, self.load_initial_data)
+        # 标记是否已经初始化过
+        self.is_initialized = False
+        
+        # 查询线程
+        self.query_thread = None
     
     # 2. 加载初始数据
     def load_initial_data(self):
-        """页面加载时自动查询最新批次的24h数据"""
+        """页面加载时等待批次列表加载完成即可，时间范围加载完成后会自动触发查询"""
         logger.info("开始加载初始数据...")
         
         # 等待 bar_history 加载完批次列表
@@ -80,16 +149,12 @@ class PageHistoryCurve(QWidget):
         self.selected_batch = self.bar_history.get_selected_batch()
         logger.info(f"使用最新批次: {self.selected_batch}")
         
-        # 设置默认时间范围为24小时
-        end_time = datetime.now()
-        start_time = end_time - timedelta(hours=24)
-        
-        # 查询所有图表数据
-        self.query_all_data(self.selected_batch, start_time, end_time)
+        # 注意：不需要在这里查询数据，批次时间范围加载完成后会自动触发 on_batch_time_range_loaded
+        logger.info("等待批次时间范围加载完成...")
     
-    # 3. 查询所有数据
+    # 3. 查询所有数据（使用后台线程）
     def query_all_data(self, batch_code: str, start_time: datetime, end_time: datetime):
-        """查询所有图表的历史数据"""
+        """查询所有图表的历史数据（后台线程执行）"""
         if not batch_code:
             logger.warning("批次号为空，无法查询")
             return
@@ -107,9 +172,36 @@ class PageHistoryCurve(QWidget):
         interval = self.history_service.calculate_optimal_interval(start_time, end_time, target_points=target_points)
         logger.info(f"使用聚合间隔: {interval}")
         
+        # 如果已有查询线程在运行，先停止
+        if self.query_thread and self.query_thread.isRunning():
+            logger.warning("上一次查询尚未完成，等待完成...")
+            self.query_thread.wait()
+        
+        # 创建后台查询线程
+        self.query_thread = HistoryQueryThread(
+            self.history_service,
+            batch_code,
+            start_time,
+            end_time,
+            interval
+        )
+        
+        # 连接信号
+        self.query_thread.query_finished.connect(self.on_query_finished)
+        self.query_thread.query_failed.connect(self.on_query_failed)
+        
+        # 启动线程
+        self.query_thread.start()
+        logger.info("后台查询线程已启动")
+    
+    # 3.1. 查询完成回调
+    def on_query_finished(self, result: dict):
+        """查询完成后更新缓存和图表（主线程）"""
         try:
-            # 1. 查询弧流弧压数据
-            arc_data = self.history_service.query_arc_data(batch_code, start_time, end_time, interval)
+            logger.info("收到后台查询结果，开始更新缓存")
+            
+            # 更新缓存
+            arc_data = result.get("arc_data", {})
             self.cached_data["arc_current"] = arc_data.get("arc_current", {"U": [], "V": [], "W": []})
             self.cached_data["arc_voltage"] = arc_data.get("arc_voltage", {"U": [], "V": [], "W": []})
             
@@ -122,31 +214,37 @@ class PageHistoryCurve(QWidget):
             self.cached_data["arc_voltage"]["2"] = self.cached_data["arc_voltage"].pop("V", [])
             self.cached_data["arc_voltage"]["3"] = self.cached_data["arc_voltage"].pop("W", [])
             
-            # 2. 查询电极深度数据
-            electrode_data = self.history_service.query_electrode_depth(batch_code, start_time, end_time, interval)
+            # 电极深度
+            electrode_data = result.get("electrode_data", {})
             self.cached_data["electrode_depth"] = electrode_data
             
-            # 3. 查询功率能耗数据
-            power_data = self.history_service.query_power_energy(batch_code, start_time, end_time, interval)
+            # 功率能耗
+            power_data = result.get("power_data", {})
             self.cached_data["power"] = power_data.get("power", [])
             self.cached_data["energy"] = power_data.get("energy", [])
             
-            # 4. 查询料仓数据
-            hopper_data = self.history_service.query_hopper_data(batch_code, start_time, end_time, interval)
+            # 料仓
+            hopper_data = result.get("hopper_data", {})
             self.cached_data["feeding_total"] = hopper_data.get("feeding_total", [])
             
-            # 5. 查询冷却水数据
-            cooling_data = self.history_service.query_cooling_water(batch_code, start_time, end_time, interval)
+            # 冷却水
+            cooling_data = result.get("cooling_data", {})
             self.cached_data["shell_water"] = cooling_data.get("shell_water", [])
             self.cached_data["cover_water"] = cooling_data.get("cover_water", [])
             
-            logger.info("历史数据查询完成，开始更新图表")
+            logger.info("缓存更新完成，开始更新图表")
             
             # 更新所有图表
             self.update_line_charts()
             
         except Exception as e:
-            logger.error(f"查询历史数据失败: {e}", exc_info=True)
+            logger.error(f"处理查询结果失败: {e}", exc_info=True)
+    
+    # 3.2. 查询失败回调
+    def on_query_failed(self, error_msg: str):
+        """查询失败时显示错误（主线程）"""
+        logger.error(f"历史数据查询失败: {error_msg}")
+        QMessageBox.critical(self, "查询失败", f"查询历史数据失败:\n{error_msg}")
     
     # 4. 初始化 UI
     def init_ui(self):
@@ -161,6 +259,7 @@ class PageHistoryCurve(QWidget):
         self.bar_history.batches_changed.connect(self.on_batches_changed)
         self.bar_history.time_range_changed.connect(self.on_time_range_changed)
         self.bar_history.query_clicked.connect(self.on_query_clicked)
+        self.bar_history.batch_time_range_loaded.connect(self.on_batch_time_range_loaded)  # 监听批次时间范围加载完成
         main_layout.addWidget(self.bar_history)
         
         # 内容区域（可滚动）
@@ -374,11 +473,22 @@ class PageHistoryCurve(QWidget):
     
     # 7. 批次选择变化（清空缓存）
     def on_batch_changed(self, batch: str):
-        """批次选择变化时清空缓存"""
+        """批次选择变化时，清空缓存，等待时间范围加载完成"""
         logger.info(f"批次选择变化: {batch}")
         self.selected_batch = batch
-        # 清空缓存，等待用户点击查询按钮
+        
+        # 清空缓存
         self.clear_cache()
+        
+        # 注意：不在这里查询数据，等待 on_batch_time_range_loaded 信号
+    
+    # 7.1. 批次时间范围加载完成
+    def on_batch_time_range_loaded(self, batch_code: str, start_time, end_time):
+        """批次时间范围加载完成后，自动查询完整时间范围的数据"""
+        logger.info(f"批次 {batch_code} 时间范围加载完成: {start_time} - {end_time}")
+        
+        # 自动查询完整时间范围的数据
+        self.query_all_data(batch_code, start_time, end_time)
     
     # 8. 批次多选变化
     def on_batches_changed(self, batches: list):
@@ -386,12 +496,16 @@ class PageHistoryCurve(QWidget):
         self.selected_batches = batches
         self.update_batch_compare()
     
-    # 9. 时间范围变化（清空缓存）
+    # 9. 时间范围变化（自动查询）
     def on_time_range_changed(self, start: QDateTime, end: QDateTime):
-        """时间范围变化时清空缓存"""
+        """时间范围变化时自动查询"""
         logger.info(f"时间范围变化: {start.toString()} - {end.toString()}")
-        # 清空缓存，等待用户点击查询按钮
+        
+        # 清空缓存
         self.clear_cache()
+        
+        # 自动触发查询
+        self.on_query_clicked()
     
     # 10. 查询按钮点击
     def on_query_clicked(self):
@@ -631,6 +745,20 @@ class PageHistoryCurve(QWidget):
     # 19. 主题变化时重新应用样式
     def on_theme_changed(self):
         self.apply_styles()
+    
+    # 19.1. 页面显示事件（每次显示时重新加载批次列表）
+    def showEvent(self, event):
+        """页面显示时重新加载批次列表"""
+        super().showEvent(event)
+        
+        if not self.is_initialized:
+            # 首次显示，延迟加载数据（等待 UI 渲染完成）
+            QTimer.singleShot(500, self.load_initial_data)
+            self.is_initialized = True
+        else:
+            # 非首次显示，立即重新加载批次列表
+            logger.info("页面显示，重新加载批次列表...")
+            self.bar_history.load_batch_list()
     
     # 20. 弧压/流/电极导出
     def on_arc_export_clicked(self):

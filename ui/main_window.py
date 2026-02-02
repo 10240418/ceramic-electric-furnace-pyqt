@@ -312,7 +312,7 @@ class MainWindow(QMainWindow):
     def get_current_page_index(self):
         return self.page_stack.currentIndex()
     
-    # 14. 关闭窗口事件（二次确认 + 停止后端服务）
+    # 14. 关闭窗口事件（二次确认 + 终止记录 + 停止后端服务 + 断开信号连接）
     def closeEvent(self, event):
         """关闭窗口时二次确认并停止后端服务"""
         logger.info("用户尝试关闭窗口...")
@@ -328,22 +328,96 @@ class MainWindow(QMainWindow):
             return
         
         # 3. 用户选择"是"，开始关闭流程
-        logger.info("用户确认关闭，正在停止后端服务...")
+        logger.info("用户确认关闭，开始关闭流程...")
         
-        # 4. 停止后端服务
+        # 4. 检查是否正在记录，如果是则先终止记录
         try:
+            from backend.services.batch_service import get_batch_service
+            batch_service = get_batch_service()
+            status = batch_service.get_status()
+            
+            if status['is_smelting']:
+                logger.info(f"检测到正在记录中（批次号: {status['batch_code']}），先终止记录...")
+                
+                # 强制刷新所有缓存（同步方式，确保数据写入）
+                logger.info("正在刷新缓存，写入数据库...")
+                self._flush_caches_sync()
+                logger.info("缓存刷新完成")
+                
+                # 停止批次记录
+                result = batch_service.stop()
+                if result['success']:
+                    logger.info(f"批次记录已终止: {result['message']}")
+                else:
+                    logger.warning(f"批次记录终止失败: {result['message']}")
+                
+                # 切换 DB1 轮询速度回低速模式 (5s)
+                from backend.services.polling_loops_v2 import switch_db1_speed
+                switch_db1_speed(high_speed=False)
+                logger.info("已切换 DB1 轮询到低速模式 (5s)")
+            else:
+                logger.info("当前未在记录中，无需终止记录")
+        
+        except Exception as e:
+            logger.error(f"终止记录失败: {e}", exc_info=True)
+        
+        # 5. 断开所有信号连接（防止信号槽泄漏）
+        try:
+            logger.info("正在断开信号连接...")
+            self.theme_manager.theme_changed.disconnect(self.on_theme_changed)
+            self.data_bridge.error_occurred.disconnect(self.on_backend_error)
+            logger.info("信号连接已断开")
+        except Exception as e:
+            logger.warning(f"断开信号连接失败: {e}")
+        
+        # 6. 停止后端服务
+        try:
+            logger.info("正在停止后端服务...")
             self.service_manager.stop_all()
             logger.info("后端服务已停止")
         except Exception as e:
             logger.error(f"停止后端服务失败: {e}")
         
-        # 5. 接受关闭事件
+        # 7. 接受关闭事件
         event.accept()
         logger.info("窗口已关闭")
         
-        # 6. 完全退出应用（包括系统托盘）
+        # 8. 完全退出应用（包括系统托盘）
         QApplication.quit()
         logger.info("应用已完全退出")
+    
+    # 15. 同步刷新所有缓存
+    def _flush_caches_sync(self):
+        """同步刷新所有缓存，立即写入数据库（阻塞方式）"""
+        try:
+            from backend.services.batch_service import get_batch_service
+            from backend.bridge.service_manager import get_service_manager
+            import asyncio
+            
+            batch_service = get_batch_service()
+            service_manager = get_service_manager()
+            
+            # 检查后端事件循环是否存在
+            if not service_manager or not service_manager.loop:
+                logger.error("后端事件循环不存在，无法刷新缓存")
+                return
+            
+            # 在后端的 asyncio 事件循环中执行刷新操作（同步等待）
+            future = asyncio.run_coroutine_threadsafe(
+                batch_service.force_flush_all_caches(),
+                service_manager.loop
+            )
+            
+            # 等待刷新完成（最多等待 5 秒）
+            result = future.result(timeout=5.0)
+            
+            if result["success"]:
+                logger.info(f"缓存刷新成功: {result['message']}")
+            else:
+                logger.warning(f"缓存刷新失败: {result['message']}")
+        
+        except Exception as e:
+            logger.error(f"刷新缓存异常: {e}", exc_info=True)
 
 
 class ConfirmExitDialog(QDialog):

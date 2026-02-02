@@ -96,28 +96,29 @@ class ModbusDataParser:
             print(f" 解析红外测距失败 @ offset {offset}: {e}")
             return {'high': 0, 'low': 0, 'distance': 0.0, 'unit': 'mm'}
     
-    def parse_pressure(self, data: bytes, offset: int, scale: float = 0.01) -> Dict[str, Any]:
+    def parse_pressure(self, data: bytes, offset: int, scale: float = 1.0) -> Dict[str, Any]:
         """解析压力数据 (2字节: WORD)
         
         Args:
             data: DB32 完整数据
             offset: 模块起始偏移量
-            scale: 缩放系数 (默认 0.01, 即原始值/100 得到 MPa)
+            scale: 缩放系数 (默认 1.0, 直接使用原始值)
             
         Returns:
             解析后的数据 {'raw': int, 'pressure': float}
         """
         try:
             raw = struct.unpack('>H', data[offset:offset+2])[0]
-            pressure = raw * scale
+            # 直接使用原始值，不乘以任何系数
+            pressure = float(raw)
             return {
                 'raw': raw,
-                'pressure': round(pressure, 3),
-                'unit': 'MPa'
+                'pressure': round(pressure, 1),
+                'unit': 'kPa'
             }
         except Exception as e:
             print(f" 解析压力失败 @ offset {offset}: {e}")
-            return {'raw': 0, 'pressure': 0.0, 'unit': 'MPa'}
+            return {'raw': 0, 'pressure': 0.0, 'unit': 'kPa'}
     
     def parse_flow(self, data: bytes, offset: int, scale: float = 0.01) -> Dict[str, Any]:
         """解析流量数据 (2字节: WORD)
@@ -200,7 +201,8 @@ class ModbusDataParser:
                     result['electrode_depths'][name] = parsed
                 
                 elif module_ref == 'PressureSensor' or name.startswith('WATER_PRESS'):
-                    parsed = self.parse_pressure(db32_data, offset)
+                    # 直接使用原始值，不乘以任何系数
+                    parsed = self.parse_pressure(db32_data, offset, scale=1.0)
                     result['cooling_pressures'][name] = parsed
                 
                 elif module_ref == 'FlowSensor' or name.startswith('WATER_FLOW'):
@@ -265,21 +267,21 @@ if __name__ == "__main__":
     
     result = parser.parse_all(test_data)
     
-    print("\n📊 DB32 解析结果:")
+    print("\n=== DB32 解析结果 ===")
     print(f"时间戳: {result['timestamp']}")
     
-    print("\n🔭 电极深度 (红外测距):")
+    print("\n--- 电极深度 (红外测距) ---")
     for name, data in result['electrode_depths'].items():
         print(f"  {name}: {data['distance']} {data['unit']}")
     
-    print("\n💧 冷却水压力:")
+    print("\n--- 冷却水压力 ---")
     for name, data in result['cooling_pressures'].items():
         print(f"  {name}: {data['pressure']} {data['unit']}")
     
-    print("\n🌊 冷却水流量:")
+    print("\n--- 冷却水流量 ---")
     for name, data in result['cooling_flows'].items():
         print(f"  {name}: {data['flow']} {data['unit']}")
     
-    print("\n 蝶阀控制状态:")
+    print("\n--- 蝶阀控制状态 ---")
     for name, data in result['valve_controls'].items():
         print(f"  {name}: OPEN={data['open']}, CLOSE={data['close']}, BUSY={data['busy']}")

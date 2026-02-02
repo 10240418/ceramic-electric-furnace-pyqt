@@ -556,6 +556,7 @@ def process_arc_data(raw_data: bytes, batch_code: str):
             arc_voltage_V=arc_data_obj.phase_V.voltage_V,
             arc_current_W=arc_data_obj.phase_W.current_A,
             arc_voltage_W=arc_data_obj.phase_W.voltage_V,
+            power_factor=0.98,
         )
         
         # 4. 构建缓存数据 (UVW三相 + 三个设定值 + 手动死区 + 功率)
@@ -1100,22 +1101,20 @@ def process_hopper_plc_data(
             _latest_hopper_upper_limit = upper_limit
             _latest_hopper_upper_limit_timestamp = datetime.now()
         
-        # 7. 当排料标志为 True 时，生成投料记录
+        # 7. 当排料标志为 True 时，生成投料记录并立即写入数据库
         if discharge_weight_ready and discharge_weight > 0 and batch_code:
             from backend.services.hopper.accumulator import get_feeding_plc_accumulator
             
             accumulator = get_feeding_plc_accumulator()
-            result = accumulator.add_feeding_record(
+            
+            # 立即写入数据库
+            import asyncio
+            asyncio.create_task(accumulator.add_feeding_record_and_write(
                 discharge_weight=discharge_weight,
                 batch_code=batch_code,
                 current_weight=current_weight,
                 upper_limit=upper_limit
-            )
-            
-            # 检查是否需要批量写入
-            if result['should_flush']:
-                import asyncio
-                asyncio.create_task(accumulator.flush_feeding_records())
+            ))
         
         # 8. 更新 DataCache + 发送信号 DataBridge
         try:

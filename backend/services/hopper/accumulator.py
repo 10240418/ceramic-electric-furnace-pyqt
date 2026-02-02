@@ -51,9 +51,6 @@ class FeedingPLCAccumulator:
     _instance: Optional['FeedingPLCAccumulator'] = None
     _lock = threading.Lock()
     
-    # 批量写入配置
-    BATCH_SIZE = 30  # 30次轮询后批量写入 (15秒)
-    
     def __new__(cls):
         if cls._instance is None:
             with cls._lock:
@@ -77,18 +74,12 @@ class FeedingPLCAccumulator:
         self._current_batch_code: Optional[str] = None
         
         # ============================================================
-        # 投料记录缓存 (待写入数据库)
-        # ============================================================
-        self._feeding_records_buffer: deque = deque(maxlen=100)
-        self._buffer_count: int = 0
-        
-        # ============================================================
         # 最新数据缓存 (供前端读取)
         # ============================================================
         self._latest_current_weight: float = 0.0  # 当前料仓重量
         self._latest_upper_limit: float = 4900.0  # 料仓上限值
         
-        logger.info("基于 PLC 的投料累计器已初始化")
+        logger.info("基于 PLC 的投料累计器已初始化 (检测到投料立即写入)")
     
     # ============================================================
     # 1: 批次管理模块
@@ -99,9 +90,6 @@ class FeedingPLCAccumulator:
         从数据库恢复累计值到内存
         """
         with self._data_lock:
-            # 清空缓存
-            self._feeding_records_buffer.clear()
-            self._buffer_count = 0
             self._current_batch_code = batch_code
             self._feeding_count = 0
             
@@ -158,16 +146,16 @@ class FeedingPLCAccumulator:
             return 0.0
     
     # ============================================================
-    # 2: 数据添加模块
+    # 2: 数据添加模块 (立即写入)
     # ============================================================
-    def add_feeding_record(
+    async def add_feeding_record_and_write(
         self,
         discharge_weight: float,
         batch_code: str,
         current_weight: float = 0.0,
         upper_limit: float = 4900.0
     ) -> Dict[str, Any]:
-        """添加一条投料记录
+        """添加一条投料记录并立即写入数据库
         
         Args:
             discharge_weight: 本次排料重量 (kg)
@@ -179,7 +167,7 @@ class FeedingPLCAccumulator:
             {
                 'feeding_total': float,      # 累计投料量
                 'feeding_count': int,        # 投料次数
-                'should_flush': bool,        # 是否需要批量写入
+                'success': bool,             # 是否写入成功
             }
         """
         with self._data_lock:
@@ -202,81 +190,75 @@ class FeedingPLCAccumulator:
                 batch_code=batch_code
             )
             
-            # 添加到缓存
-            self._feeding_records_buffer.append(record)
-            self._buffer_count += 1
-            
-            # 检查是否需要批量写入
-            should_flush = self._buffer_count >= self.BATCH_SIZE
-            
             logger.info(f"投料记录已添加: {discharge_weight:.1f}kg, 累计: {self._feeding_total:.1f}kg")
-            
-            return {
-                'feeding_total': self._feeding_total,
-                'feeding_count': self._feeding_count,
-                'should_flush': should_flush,
-            }
+        
+        # 立即写入数据库 (在锁外执行，避免阻塞)
+        success = await self._write_single_record(record, self._feeding_total)
+        
+        return {
+            'feeding_total': self._feeding_total,
+            'feeding_count': self._feeding_count,
+            'success': success,
+        }
     
     # ============================================================
-    # 3: 批量写入模块
+    # 3: 单条记录写入模块
     # ============================================================
-    async def flush_feeding_records(self):
-        """批量写入投料记录到 InfluxDB (只写入 sensor_data，统一数据库)"""
-        with self._data_lock:
-            if not self._feeding_records_buffer:
-                return
-            
-            # 复制缓存并清空
-            records = list(self._feeding_records_buffer)
-            self._feeding_records_buffer.clear()
-            self._buffer_count = 0
+    async def _write_single_record(self, record: FeedingRecord, feeding_total: float) -> bool:
+        """写入单条投料记录到 InfluxDB
         
-        # 写入数据库
+        Args:
+            record: 投料记录
+            feeding_total: 当前累计投料量
+            
+        Returns:
+            是否写入成功
+        """
         try:
             from backend.core.influxdb import write_points_batch, build_point
             
-            points = []
-            current_total = self._feeding_total - sum(r.discharge_weight for r in records)
+            # 构建数据点
+            point = build_point(
+                measurement='sensor_data',
+                tags={
+                    'device_type': 'hopper',
+                    'device_id': 'hopper_1',
+                    'module_type': 'feeding',
+                    'batch_code': record.batch_code
+                },
+                fields={
+                    'discharge_weight': record.discharge_weight,
+                    'feeding_total': feeding_total
+                },
+                timestamp=record.timestamp
+            )
             
-            for record in records:
-                current_total += record.discharge_weight
-                
-                # 写入 sensor_data (统一使用 sensor_data measurement)
-                point = build_point(
-                    measurement='sensor_data',
-                    tags={
-                        'device_type': 'hopper',
-                        'device_id': 'hopper_1',
-                        'module_type': 'feeding',
-                        'batch_code': record.batch_code
-                    },
-                    fields={
-                        'discharge_weight': record.discharge_weight,
-                        'feeding_total': current_total
-                    },
-                    timestamp=record.timestamp
-                )
-                if point:
-                    points.append(point)
+            if not point:
+                logger.error("构建投料记录数据点失败")
+                return False
             
-            if points:
-                success, err = write_points_batch(points)
-                if success:
-                    logger.info(f"批量写入投料记录成功: {len(records)} 条记录")
-                else:
-                    logger.error(f"批量写入投料记录失败: {err}")
+            # 写入数据库
+            success, err = write_points_batch([point])
+            if success:
+                logger.info(f"投料记录已写入数据库: {record.discharge_weight:.1f}kg, 累计: {feeding_total:.1f}kg")
+                return True
+            else:
+                logger.error(f"写入投料记录失败: {err}")
+                return False
         
         except Exception as e:
-            logger.error(f"批量写入投料记录异常: {e}")
+            logger.error(f"写入投料记录异常: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
     
     # ============================================================
-    # 4: 强制刷新缓存模块
+    # 4: 强制刷新缓存模块 (已废弃，保留兼容性)
     # ============================================================
     async def force_flush(self):
-        """强制刷新缓存，立即写入数据库（不管是否达到批量阈值）"""
-        logger.info("强制刷新投料记录缓存...")
-        await self.flush_feeding_records()
-        logger.info("投料记录缓存已强制刷新")
+        """强制刷新缓存 (已废弃，新逻辑立即写入无需刷新)"""
+        logger.info("force_flush 已废弃，新逻辑检测到投料立即写入")
+        pass
     
     # ============================================================
     # 5: 数据获取模块
@@ -296,7 +278,6 @@ class FeedingPLCAccumulator:
                 'current_weight': float,          # 当前重量
                 'upper_limit': float,             # 料仓上限值
                 'batch_code': str,                # 当前批次号
-                'buffer_size': int,               # 缓存大小
             }
         """
         with self._data_lock:
@@ -306,7 +287,6 @@ class FeedingPLCAccumulator:
                 'current_weight': self._latest_current_weight,
                 'upper_limit': self._latest_upper_limit,
                 'batch_code': self._current_batch_code,
-                'buffer_size': len(self._feeding_records_buffer),
             }
 
 

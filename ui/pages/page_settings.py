@@ -77,6 +77,8 @@ class PageSettings(QWidget):
             {"title": "系统配置", "icon": "⚙"},
             {"title": "报警阈值", "icon": "⚠"},
             {"title": "弧流设置", "icon": "⚡"},
+            {"title": "蝶阀配置", "icon": "🔧"},
+            {"title": "轮询速度", "icon": "⏱"},
         ]
         
         self.nav_buttons = []
@@ -103,6 +105,11 @@ class PageSettings(QWidget):
     def switch_content(self, index: int):
         self.current_nav_index = index
         
+        # 停止弧流设置定时器（如果存在）
+        if hasattr(self, 'arc_limit_timer') and self.arc_limit_timer is not None:
+            self.arc_limit_timer.stop()
+            self.arc_limit_timer = None
+        
         # 清空右侧内容
         while self.right_layout.count():
             item = self.right_layout.takeAt(0)
@@ -116,6 +123,10 @@ class PageSettings(QWidget):
             self.show_alarm_threshold_content()
         elif index == 2:
             self.show_arc_limit_content()
+        elif index == 3:
+            self.show_valve_config_content()
+        elif index == 4:
+            self.show_polling_config_content()
         
         # 更新导航按钮样式
         self.update_nav_buttons()
@@ -458,6 +469,10 @@ class PageSettings(QWidget):
         from backend.bridge.data_cache import DataCache
         
         try:
+            # 检查控件是否存在（防止页面切换后定时器仍在运行）
+            if not hasattr(self, 'arc_limit_value') or self.arc_limit_value is None:
+                return
+            
             data_cache = DataCache()  # 单例模式，直接实例化
             arc_data = data_cache.get_arc_data()  # 使用正确的方法
             
@@ -507,6 +522,214 @@ class PageSettings(QWidget):
     def on_arc_limit_set(self, new_limit: int):
         """弧流上限设置完成回调"""
         logger.info(f"弧流上限已设置为: {new_limit} A")
+    
+    # 12.9. 显示蝶阀配置内容
+    def show_valve_config_content(self):
+        """显示蝶阀配置内容"""
+        # 标题栏
+        title_bar = self.create_title_bar("蝶阀配置")
+        self.right_layout.addWidget(title_bar)
+        
+        # 滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setObjectName("content_scroll")
+        
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setSpacing(20)
+        
+        # 说明文字
+        desc_frame = QFrame()
+        desc_frame.setObjectName("info_frame")
+        desc_layout = QHBoxLayout(desc_frame)
+        desc_layout.setContentsMargins(12, 12, 12, 12)
+        desc_layout.setSpacing(10)
+        
+        info_icon = QLabel("ℹ")
+        info_icon.setObjectName("info_icon")
+        info_icon.setFont(QFont("Microsoft YaHei", 16))
+        desc_layout.addWidget(info_icon)
+        
+        desc = QLabel("设置4个蝶阀从完全关闭到完全打开（全开时间）和从完全打开到完全关闭（全关时间）所需的时间，用于精确计算蝶阀开度百分比")
+        desc.setObjectName("info_text")
+        desc.setFont(QFont("Microsoft YaHei", 13))
+        desc.setWordWrap(True)
+        desc_layout.addWidget(desc, stretch=1)
+        
+        scroll_layout.addWidget(desc_frame)
+        
+        # 蝶阀配置区域
+        valve_section = self.create_valve_config_section()
+        scroll_layout.addWidget(valve_section)
+        
+        scroll_layout.addStretch()
+        
+        scroll_area.setWidget(scroll_content)
+        self.right_layout.addWidget(scroll_area)
+    
+    # 12.91. 显示轮询速度配置内容
+    def show_polling_config_content(self):
+        """显示轮询速度配置内容"""
+        from ui.pages.page_polling_config import PagePollingConfig
+        
+        # 创建轮询速度配置页面
+        polling_config_page = PagePollingConfig(self)
+        self.right_layout.addWidget(polling_config_page)
+    
+    # 12.10. 创建蝶阀配置区域
+    def create_valve_config_section(self):
+        """创建蝶阀配置区域"""
+        from backend.services.db32.valve_config import get_valve_config_service
+        
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(20)
+        
+        # 获取蝶阀配置服务
+        self.valve_config_service = get_valve_config_service()
+        
+        # 存储输入控件引用
+        self.valve_config_inputs = {}
+        
+        # 为4个蝶阀创建配置卡片
+        for valve_id in range(1, 5):
+            valve_card = self.create_valve_config_card(valve_id)
+            layout.addWidget(valve_card)
+        
+        return container
+    
+    # 12.11. 创建单个蝶阀配置卡片
+    def create_valve_config_card(self, valve_id: int):
+        """创建单个蝶阀配置卡片"""
+        card = QFrame()
+        card.setObjectName("valve_config_card")
+        
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
+        
+        # 卡片标题
+        title = QLabel(f"蝶阀 {valve_id}")
+        title.setObjectName("valve_card_title")
+        title.setFont(QFont("Microsoft YaHei", 18, QFont.Weight.Bold))
+        layout.addWidget(title)
+        
+        # 获取当前配置
+        config = self.valve_config_service.get_config(valve_id)
+        
+        # 全开时间设置行
+        open_time_row = QHBoxLayout()
+        open_time_row.setSpacing(15)
+        
+        open_time_label = QLabel("全开时间:")
+        open_time_label.setObjectName("valve_config_label")
+        open_time_label.setFont(QFont("Microsoft YaHei", 14))
+        open_time_label.setFixedWidth(120)
+        open_time_row.addWidget(open_time_label)
+        
+        # 全开时间 - 减少按钮
+        btn_open_minus = QPushButton("-")
+        btn_open_minus.setObjectName("btnMinus")
+        btn_open_minus.setFixedSize(45, 45)
+        btn_open_minus.setCursor(Qt.CursorShape.PointingHandCursor)
+        open_time_row.addWidget(btn_open_minus)
+        
+        # 全开时间输入框
+        open_time_input = QDoubleSpinBox()
+        open_time_input.setObjectName("valve_time_input")
+        open_time_input.setRange(1.0, 300.0)
+        open_time_input.setDecimals(1)
+        open_time_input.setSingleStep(1.0)
+        open_time_input.setValue(config.full_open_time)
+        open_time_input.setFixedSize(120, 45)
+        open_time_input.setFont(QFont("Microsoft YaHei", 13))
+        open_time_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        open_time_input.setSuffix(" 秒")
+        open_time_row.addWidget(open_time_input)
+        
+        # 全开时间 - 增加按钮
+        btn_open_plus = QPushButton("+")
+        btn_open_plus.setObjectName("btnPlus")
+        btn_open_plus.setFixedSize(45, 45)
+        btn_open_plus.setCursor(Qt.CursorShape.PointingHandCursor)
+        open_time_row.addWidget(btn_open_plus)
+        
+        # 连接按钮信号
+        btn_open_minus.clicked.connect(lambda: open_time_input.setValue(open_time_input.value() - open_time_input.singleStep()))
+        btn_open_plus.clicked.connect(lambda: open_time_input.setValue(open_time_input.value() + open_time_input.singleStep()))
+        
+        open_time_row.addStretch()
+        
+        # 说明文字
+        open_time_desc = QLabel("从完全关闭到完全打开所需时间")
+        open_time_desc.setObjectName("valve_config_desc")
+        open_time_desc.setFont(QFont("Microsoft YaHei", 11))
+        open_time_row.addWidget(open_time_desc)
+        
+        layout.addLayout(open_time_row)
+        
+        # 全关时间设置行
+        close_time_row = QHBoxLayout()
+        close_time_row.setSpacing(15)
+        
+        close_time_label = QLabel("全关时间:")
+        close_time_label.setObjectName("valve_config_label")
+        close_time_label.setFont(QFont("Microsoft YaHei", 14))
+        close_time_label.setFixedWidth(120)
+        close_time_row.addWidget(close_time_label)
+        
+        # 全关时间 - 减少按钮
+        btn_close_minus = QPushButton("-")
+        btn_close_minus.setObjectName("btnMinus")
+        btn_close_minus.setFixedSize(45, 45)
+        btn_close_minus.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_time_row.addWidget(btn_close_minus)
+        
+        # 全关时间输入框
+        close_time_input = QDoubleSpinBox()
+        close_time_input.setObjectName("valve_time_input")
+        close_time_input.setRange(1.0, 300.0)
+        close_time_input.setDecimals(1)
+        close_time_input.setSingleStep(1.0)
+        close_time_input.setValue(config.full_close_time)
+        close_time_input.setFixedSize(120, 45)
+        close_time_input.setFont(QFont("Microsoft YaHei", 13))
+        close_time_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        close_time_input.setSuffix(" 秒")
+        close_time_row.addWidget(close_time_input)
+        
+        # 全关时间 - 增加按钮
+        btn_close_plus = QPushButton("+")
+        btn_close_plus.setObjectName("btnPlus")
+        btn_close_plus.setFixedSize(45, 45)
+        btn_close_plus.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_time_row.addWidget(btn_close_plus)
+        
+        # 连接按钮信号
+        btn_close_minus.clicked.connect(lambda: close_time_input.setValue(close_time_input.value() - close_time_input.singleStep()))
+        btn_close_plus.clicked.connect(lambda: close_time_input.setValue(close_time_input.value() + close_time_input.singleStep()))
+        
+        close_time_row.addStretch()
+        
+        # 说明文字
+        close_time_desc = QLabel("从完全打开到完全关闭所需时间")
+        close_time_desc.setObjectName("valve_config_desc")
+        close_time_desc.setFont(QFont("Microsoft YaHei", 11))
+        close_time_row.addWidget(close_time_desc)
+        
+        layout.addLayout(close_time_row)
+        
+        # 保存输入控件引用
+        self.valve_config_inputs[valve_id] = {
+            'full_open_time': open_time_input,
+            'full_close_time': close_time_input,
+        }
+        
+        return card
     
     # 13. 创建报警阈值设置区域
     def create_alarm_section(self):
@@ -668,37 +891,75 @@ class PageSettings(QWidget):
         
         # 警告下限
         warning_min_label = QLabel("下限:")
+        warning_min_label.setObjectName("threshold_sub_label")
         warning_min_label.setFont(QFont("Microsoft YaHei", 13))
         warning_layout.addWidget(warning_min_label)
+        
+        # 警告下限 - 按钮
+        btn_warning_min_minus = QPushButton("-")
+        btn_warning_min_minus.setObjectName("btnMinus")
+        btn_warning_min_minus.setFixedSize(45, 45)
+        btn_warning_min_minus.setCursor(Qt.CursorShape.PointingHandCursor)
+        warning_layout.addWidget(btn_warning_min_minus)
         
         warning_min = QDoubleSpinBox()
         warning_min.setObjectName("threshold_input")
         warning_min.setRange(-10000, 10000)
         warning_min.setDecimals(1)
         warning_min.setValue(config.warning_min if config and config.warning_min is not None else 0.0)
-        warning_min.setFixedSize(140, 45)
+        warning_min.setFixedSize(120, 45)
         warning_min.setFont(QFont("Microsoft YaHei", 13))
+        warning_min.setAlignment(Qt.AlignmentFlag.AlignCenter)
         warning_min.setSpecialValueText("无限制")
         if config and config.warning_min is None:
             warning_min.setValue(warning_min.minimum())
         warning_layout.addWidget(warning_min)
         
+        btn_warning_min_plus = QPushButton("+")
+        btn_warning_min_plus.setObjectName("btnPlus")
+        btn_warning_min_plus.setFixedSize(45, 45)
+        btn_warning_min_plus.setCursor(Qt.CursorShape.PointingHandCursor)
+        warning_layout.addWidget(btn_warning_min_plus)
+        
+        # 连接按钮信号
+        btn_warning_min_minus.clicked.connect(lambda: warning_min.setValue(warning_min.value() - warning_min.singleStep()))
+        btn_warning_min_plus.clicked.connect(lambda: warning_min.setValue(warning_min.value() + warning_min.singleStep()))
+        
         # 警告上限
         warning_max_label = QLabel("上限:")
+        warning_max_label.setObjectName("threshold_sub_label")
         warning_max_label.setFont(QFont("Microsoft YaHei", 13))
         warning_layout.addWidget(warning_max_label)
+        
+        # 警告上限 - 按钮
+        btn_warning_max_minus = QPushButton("-")
+        btn_warning_max_minus.setObjectName("btnMinus")
+        btn_warning_max_minus.setFixedSize(45, 45)
+        btn_warning_max_minus.setCursor(Qt.CursorShape.PointingHandCursor)
+        warning_layout.addWidget(btn_warning_max_minus)
         
         warning_max = QDoubleSpinBox()
         warning_max.setObjectName("threshold_input")
         warning_max.setRange(-10000, 10000)
         warning_max.setDecimals(1)
         warning_max.setValue(config.warning_max if config and config.warning_max is not None else 0.0)
-        warning_max.setFixedSize(140, 45)
+        warning_max.setFixedSize(120, 45)
         warning_max.setFont(QFont("Microsoft YaHei", 13))
+        warning_max.setAlignment(Qt.AlignmentFlag.AlignCenter)
         warning_max.setSpecialValueText("无限制")
         if config and config.warning_max is None:
             warning_max.setValue(warning_max.maximum())
         warning_layout.addWidget(warning_max)
+        
+        btn_warning_max_plus = QPushButton("+")
+        btn_warning_max_plus.setObjectName("btnPlus")
+        btn_warning_max_plus.setFixedSize(45, 45)
+        btn_warning_max_plus.setCursor(Qt.CursorShape.PointingHandCursor)
+        warning_layout.addWidget(btn_warning_max_plus)
+        
+        # 连接按钮信号
+        btn_warning_max_minus.clicked.connect(lambda: warning_max.setValue(warning_max.value() - warning_max.singleStep()))
+        btn_warning_max_plus.clicked.connect(lambda: warning_max.setValue(warning_max.value() + warning_max.singleStep()))
         
         warning_layout.addStretch()
         layout.addLayout(warning_layout)
@@ -715,37 +976,75 @@ class PageSettings(QWidget):
         
         # 报警下限
         alarm_min_label = QLabel("下限:")
+        alarm_min_label.setObjectName("threshold_sub_label")
         alarm_min_label.setFont(QFont("Microsoft YaHei", 13))
         alarm_layout.addWidget(alarm_min_label)
+        
+        # 报警下限 - 按钮
+        btn_alarm_min_minus = QPushButton("-")
+        btn_alarm_min_minus.setObjectName("btnMinus")
+        btn_alarm_min_minus.setFixedSize(45, 45)
+        btn_alarm_min_minus.setCursor(Qt.CursorShape.PointingHandCursor)
+        alarm_layout.addWidget(btn_alarm_min_minus)
         
         alarm_min = QDoubleSpinBox()
         alarm_min.setObjectName("threshold_input")
         alarm_min.setRange(-10000, 10000)
         alarm_min.setDecimals(1)
         alarm_min.setValue(config.alarm_min if config and config.alarm_min is not None else 0.0)
-        alarm_min.setFixedSize(140, 45)
+        alarm_min.setFixedSize(120, 45)
         alarm_min.setFont(QFont("Microsoft YaHei", 13))
+        alarm_min.setAlignment(Qt.AlignmentFlag.AlignCenter)
         alarm_min.setSpecialValueText("无限制")
         if config and config.alarm_min is None:
             alarm_min.setValue(alarm_min.minimum())
         alarm_layout.addWidget(alarm_min)
         
+        btn_alarm_min_plus = QPushButton("+")
+        btn_alarm_min_plus.setObjectName("btnPlus")
+        btn_alarm_min_plus.setFixedSize(45, 45)
+        btn_alarm_min_plus.setCursor(Qt.CursorShape.PointingHandCursor)
+        alarm_layout.addWidget(btn_alarm_min_plus)
+        
+        # 连接按钮信号
+        btn_alarm_min_minus.clicked.connect(lambda: alarm_min.setValue(alarm_min.value() - alarm_min.singleStep()))
+        btn_alarm_min_plus.clicked.connect(lambda: alarm_min.setValue(alarm_min.value() + alarm_min.singleStep()))
+        
         # 报警上限
         alarm_max_label = QLabel("上限:")
+        alarm_max_label.setObjectName("threshold_sub_label")
         alarm_max_label.setFont(QFont("Microsoft YaHei", 13))
         alarm_layout.addWidget(alarm_max_label)
+        
+        # 报警上限 - 按钮
+        btn_alarm_max_minus = QPushButton("-")
+        btn_alarm_max_minus.setObjectName("btnMinus")
+        btn_alarm_max_minus.setFixedSize(45, 45)
+        btn_alarm_max_minus.setCursor(Qt.CursorShape.PointingHandCursor)
+        alarm_layout.addWidget(btn_alarm_max_minus)
         
         alarm_max = QDoubleSpinBox()
         alarm_max.setObjectName("threshold_input")
         alarm_max.setRange(-10000, 10000)
         alarm_max.setDecimals(1)
         alarm_max.setValue(config.alarm_max if config and config.alarm_max is not None else 0.0)
-        alarm_max.setFixedSize(140, 45)
+        alarm_max.setFixedSize(120, 45)
         alarm_max.setFont(QFont("Microsoft YaHei", 13))
+        alarm_max.setAlignment(Qt.AlignmentFlag.AlignCenter)
         alarm_max.setSpecialValueText("无限制")
         if config and config.alarm_max is None:
             alarm_max.setValue(alarm_max.maximum())
         alarm_layout.addWidget(alarm_max)
+        
+        btn_alarm_max_plus = QPushButton("+")
+        btn_alarm_max_plus.setObjectName("btnPlus")
+        btn_alarm_max_plus.setFixedSize(45, 45)
+        btn_alarm_max_plus.setCursor(Qt.CursorShape.PointingHandCursor)
+        alarm_layout.addWidget(btn_alarm_max_plus)
+        
+        # 连接按钮信号
+        btn_alarm_max_minus.clicked.connect(lambda: alarm_max.setValue(alarm_max.value() - alarm_max.singleStep()))
+        btn_alarm_max_plus.clicked.connect(lambda: alarm_max.setValue(alarm_max.value() + alarm_max.singleStep()))
         
         alarm_layout.addStretch()
         layout.addLayout(alarm_layout)
@@ -763,49 +1062,83 @@ class PageSettings(QWidget):
     
     # 16. 保存配置
     def on_save_clicked(self):
-        """保存所有阈值配置"""
+        """保存所有配置（根据当前页面）"""
         try:
-            # 遍历所有输入控件，更新配置
-            for param_name, inputs in self.threshold_inputs.items():
-                # 获取输入值
-                enabled = inputs['enabled'].isChecked()
-                warning_min = inputs['warning_min'].value()
-                warning_max = inputs['warning_max'].value()
-                alarm_min = inputs['alarm_min'].value()
-                alarm_max = inputs['alarm_max'].value()
-                
-                # 处理"无限制"的情况
-                if warning_min == inputs['warning_min'].minimum():
-                    warning_min = None
-                if warning_max == inputs['warning_max'].maximum():
-                    warning_max = None
-                if alarm_min == inputs['alarm_min'].minimum():
-                    alarm_min = None
-                if alarm_max == inputs['alarm_max'].maximum():
-                    alarm_max = None
-                
-                # 创建配置对象
-                config = ThresholdConfig(
-                    warning_min=warning_min,
-                    warning_max=warning_max,
-                    alarm_min=alarm_min,
-                    alarm_max=alarm_max,
-                    enabled=enabled
-                )
-                
-                # 更新到管理器
-                self.alarm_manager.set_threshold(param_name, config)
-            
-            # 保存到文件
-            if self.alarm_manager.save():
-                self.show_success_dialog("配置已保存")
-                logger.info("配置已保存")
+            if self.current_nav_index == 1:
+                # 保存报警阈值配置
+                self.save_alarm_threshold_config()
+            elif self.current_nav_index == 3:
+                # 保存蝶阀配置
+                self.save_valve_config()
             else:
-                self.show_warning_dialog("保存配置失败，请检查日志")
-        
+                # 其他页面暂不支持保存
+                self.show_warning_dialog("当前页面无需保存配置")
         except Exception as e:
             logger.error(f"保存配置异常: {e}", exc_info=True)
             self.show_error_dialog(f"保存配置失败: {e}")
+    
+    # 16.1. 保存报警阈值配置
+    def save_alarm_threshold_config(self):
+        """保存报警阈值配置"""
+        # 遍历所有输入控件，更新配置
+        for param_name, inputs in self.threshold_inputs.items():
+            # 获取输入值
+            enabled = inputs['enabled'].isChecked()
+            warning_min = inputs['warning_min'].value()
+            warning_max = inputs['warning_max'].value()
+            alarm_min = inputs['alarm_min'].value()
+            alarm_max = inputs['alarm_max'].value()
+            
+            # 处理"无限制"的情况
+            if warning_min == inputs['warning_min'].minimum():
+                warning_min = None
+            if warning_max == inputs['warning_max'].maximum():
+                warning_max = None
+            if alarm_min == inputs['alarm_min'].minimum():
+                alarm_min = None
+            if alarm_max == inputs['alarm_max'].maximum():
+                alarm_max = None
+            
+            # 创建配置对象
+            config = ThresholdConfig(
+                warning_min=warning_min,
+                warning_max=warning_max,
+                alarm_min=alarm_min,
+                alarm_max=alarm_max,
+                enabled=enabled
+            )
+            
+            # 更新到管理器
+            self.alarm_manager.set_threshold(param_name, config)
+        
+        # 保存到文件
+        if self.alarm_manager.save():
+            self.show_success_dialog("报警阈值配置已保存")
+            logger.info("报警阈值配置已保存")
+        else:
+            self.show_warning_dialog("保存报警阈值配置失败，请检查日志")
+    
+    # 16.2. 保存蝶阀配置
+    def save_valve_config(self):
+        """保存蝶阀配置"""
+        if not hasattr(self, 'valve_config_inputs') or not self.valve_config_inputs:
+            self.show_warning_dialog("蝶阀配置输入控件未初始化")
+            return
+        
+        # 遍历所有蝶阀，更新配置
+        for valve_id, inputs in self.valve_config_inputs.items():
+            full_open_time = inputs['full_open_time'].value()
+            full_close_time = inputs['full_close_time'].value()
+            
+            # 更新配置
+            self.valve_config_service.update_config(
+                valve_id=valve_id,
+                full_open_time=full_open_time,
+                full_close_time=full_close_time
+            )
+        
+        self.show_success_dialog("蝶阀配置已保存，重启程序后生效")
+        logger.info("蝶阀配置已保存")
     
     # 17. 显示成功对话框
     def show_success_dialog(self, message: str):
@@ -979,6 +1312,7 @@ class PageSettings(QWidget):
             /* 导航标题 */
             QLabel#nav_title {{
                 color: {tm.text_primary()};
+                background: transparent;
             }}
             
             /* 导航按钮 */
@@ -1022,6 +1356,7 @@ class PageSettings(QWidget):
             /* 内容标题 */
             QLabel#content_title {{
                 color: {tm.text_primary()};
+                background: transparent;
             }}
             
             /* 保存按钮 */
@@ -1057,16 +1392,19 @@ class PageSettings(QWidget):
             /* 区域标题 */
             QLabel#section_title {{
                 color: {tm.border_glow()};
+                background: transparent;
             }}
             
             /* 设置标签 */
             QLabel#setting_label {{
                 color: {tm.text_primary()};
+                background: transparent;
             }}
             
             /* 设置说明 */
             QLabel#setting_desc {{
                 color: {tm.text_secondary()};
+                background: transparent;
             }}
             
             /* 信息框 */
@@ -1078,10 +1416,12 @@ class PageSettings(QWidget):
             
             QLabel#info_icon {{
                 color: {tm.glow_primary()};
+                background: transparent;
             }}
             
             QLabel#info_text {{
                 color: {tm.text_secondary()};
+                background: transparent;
             }}
             
             /* 阈值组 */
@@ -1094,6 +1434,7 @@ class PageSettings(QWidget):
             /* 组标题 */
             QLabel#group_title {{
                 color: {tm.border_glow()};
+                background: transparent;
             }}
             
             /* 阈值行 */
@@ -1106,12 +1447,20 @@ class PageSettings(QWidget):
             /* 参数名称 */
             QLabel#param_name {{
                 color: {tm.text_primary()};
+                background: transparent;
             }}
             
             /* 阈值标签 */
             QLabel#threshold_label {{
                 color: {tm.text_primary()};
                 font-weight: bold;
+                background: transparent;
+            }}
+            
+            /* 阈值子标签（上限、下限） */
+            QLabel#threshold_sub_label {{
+                color: {tm.text_primary()};
+                background: transparent;
             }}
             
             /* 阈值输入框 */
@@ -1131,22 +1480,36 @@ class PageSettings(QWidget):
                 border: 2px solid {tm.glow_primary()};
             }}
             
+            /* 隐藏 SpinBox 的上下按钮 */
             QDoubleSpinBox#threshold_input::up-button,
             QDoubleSpinBox#threshold_input::down-button {{
-                width: 20px;
-                height: 20px;
-                border-radius: 3px;
-                background: {tm.bg_dark()};
+                width: 0px;
+                height: 0px;
             }}
             
-            QDoubleSpinBox#threshold_input::up-button:hover,
-            QDoubleSpinBox#threshold_input::down-button:hover {{
-                background: {tm.border_glow()};
+            /* -/+ 按钮样式 */
+            QPushButton#btnMinus, QPushButton#btnPlus {{
+                background: {tm.bg_light()};
+                color: {tm.text_primary()};
+                border: 1px solid {tm.border_dark()};
+                border-radius: 6px;
+                font-size: 20px;
+                font-weight: bold;
+            }}
+            
+            QPushButton#btnMinus:hover, QPushButton#btnPlus:hover {{
+                border: 1px solid {tm.border_glow()};
+                background: {tm.bg_medium()};
+            }}
+            
+            QPushButton#btnMinus:pressed, QPushButton#btnPlus:pressed {{
+                background: {tm.bg_dark()};
             }}
             
             /* 启用复选框 */
             QCheckBox#enable_checkbox {{
                 color: {tm.text_primary()};
+                background: transparent;
             }}
             
             QCheckBox#enable_checkbox::indicator {{
@@ -1166,6 +1529,53 @@ class PageSettings(QWidget):
                 border: 2px solid {tm.glow_primary()};
             }}
             
+            /* 蝶阀配置卡片 */
+            QFrame#valve_config_card {{
+                background: {tm.bg_dark()};
+                border: 1px solid {tm.border_medium()};
+                border-radius: 8px;
+            }}
+            
+            QLabel#valve_card_title {{
+                color: {tm.border_glow()};
+                background: transparent;
+            }}
+            
+            QLabel#valve_config_label {{
+                color: {tm.text_primary()};
+                font-weight: bold;
+                background: transparent;
+            }}
+            
+            QLabel#valve_config_desc {{
+                color: {tm.text_secondary()};
+                background: transparent;
+            }}
+            
+            /* 蝶阀时间输入框 */
+            QDoubleSpinBox#valve_time_input {{
+                background: {tm.bg_medium()};
+                color: {tm.text_primary()};
+                border: 1px solid {tm.border_dark()};
+                border-radius: 6px;
+                padding: 8px;
+            }}
+            
+            QDoubleSpinBox#valve_time_input:hover {{
+                border: 1px solid {tm.border_glow()};
+            }}
+            
+            QDoubleSpinBox#valve_time_input:focus {{
+                border: 2px solid {tm.glow_primary()};
+            }}
+            
+            /* 隐藏 SpinBox 的上下按钮 */
+            QDoubleSpinBox#valve_time_input::up-button,
+            QDoubleSpinBox#valve_time_input::down-button {{
+                width: 0px;
+                height: 0px;
+            }}
+            
             /* 弧流设置卡片 */
             QFrame#arc_limit_card, QFrame#status_card {{
                 background: {tm.bg_dark()};
@@ -1175,22 +1585,27 @@ class PageSettings(QWidget):
             
             QLabel#card_title {{
                 color: {tm.border_glow()};
+                background: transparent;
             }}
             
             QLabel#value_label, QLabel#status_label {{
                 color: {tm.text_primary()};
+                background: transparent;
             }}
             
             QLabel#arc_limit_value {{
                 color: {tm.glow_primary()};
+                background: transparent;
             }}
             
             QLabel#stop_flag_active, QLabel#stop_enabled_active {{
                 color: {tm.glow_green()};
+                background: transparent;
             }}
             
             QLabel#stop_flag_inactive, QLabel#stop_enabled_inactive {{
                 color: {tm.text_secondary()};
+                background: transparent;
             }}
             
             QPushButton#set_arc_limit_btn {{

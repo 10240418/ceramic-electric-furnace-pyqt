@@ -14,8 +14,10 @@ from typing import Optional, Tuple, Dict, Any
 from datetime import datetime
 
 from backend.config import get_settings
+from backend.core.log_throttler import get_error_log_throttler
 
 settings = get_settings()
+log_throttler = get_error_log_throttler()
 
 # 尝试导入 snap7
 try:
@@ -96,13 +98,18 @@ class PLCManager:
             self._last_connect_time = datetime.now()
             self._connect_count += 1
             self._consecutive_error_count = 0
-            print(f" PLC 连接成功: {self._ip}:{self._port}")
+            
+            # 连接成功，重置限流器
+            log_throttler.reset("plc_connect_failed")
+            print(f"✅ PLC 连接成功: {self._ip}:{self._port}")
             return (True, "连接成功")
         except Exception as e:
             self._connected = False
             self._last_error = str(e)
             self._error_count += 1
-            print(f" PLC 连接失败: {e}")
+            
+            # 使用限流器记录错误日志（60秒内只记录一次）
+            log_throttler.log_error("plc_connect_failed", f"PLC 连接失败: {self._ip}:{self._port} - {e}")
             return (False, str(e))
     
     def disconnect(self):
@@ -149,9 +156,12 @@ class PLCManager:
                 self._consecutive_error_count += 1
                 self._last_error = str(e)
                 
+                # 使用限流器记录错误日志（60秒内只记录一次）
+                log_throttler.log_error("plc_read_failed", f"PLC 读取失败 DB{db_number}: {e}")
+                
                 # 连续错误过多，强制重连
                 if self._consecutive_error_count >= self._max_consecutive_errors:
-                    print(f" 连续 {self._consecutive_error_count} 次错误，强制重连")
+                    log_throttler.log_error("plc_force_reconnect", f"连续 {self._consecutive_error_count} 次错误，强制重连")
                     self._disconnect_internal()
                 
                 return (None, str(e))
@@ -182,6 +192,9 @@ class PLCManager:
                 self._error_count += 1
                 self._consecutive_error_count += 1
                 self._last_error = str(e)
+                
+                # 使用限流器记录错误日志（60秒内只记录一次）
+                log_throttler.log_error("plc_write_failed", f"PLC 写入失败 DB{db_number}: {e}")
                 return (False, str(e))
     
     def is_connected(self) -> bool:
@@ -212,8 +225,15 @@ class PLCManager:
             
             try:
                 # snap7 area codes: 0x82 = Output (Q)
-                # Areas.PA = 0x82 (Process Outputs)
-                data = self._client.read_area(snap7.types.Areas.PA, 0, start, size)
+                # 兼容 snap7 1.x 和 2.x 版本
+                try:
+                    from snap7.snap7types import S7AreaPA
+                    data = self._client.read_area(S7AreaPA, 0, start, size)
+                except (ImportError, AttributeError):
+                    # snap7 2.x: Area 直接在 snap7 模块下
+                    from snap7 import Area
+                    data = self._client.read_area(Area.PA, 0, start, size)
+                
                 self._last_read_time = datetime.now()
                 self._consecutive_error_count = 0
                 return (bytes(data), "")
@@ -221,6 +241,9 @@ class PLCManager:
                 self._error_count += 1
                 self._consecutive_error_count += 1
                 self._last_error = str(e)
+                
+                # 使用限流器记录错误日志（60秒内只记录一次）
+                log_throttler.log_error("plc_read_output_failed", f"PLC 读取输出区失败 Q{start}: {e}")
                 return (None, str(e))
 
     def get_status(self) -> Dict[str, Any]:

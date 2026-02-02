@@ -36,12 +36,12 @@ modules:
   PressureSensor:
     size: 2  # Int = 2 bytes
     unit: "kPa"
-    description: 压力传感器 (转换后单位 kPa)
+    description: 压力传感器 (单位 kPa)
     fields:
       - name: pressure
         offset: 0
         type: INT
-        description: 压力值 (需转换, 原始值×0.01→kPa)
+        description: 压力值 (直接使用原始值，单位 kPa)
 
   # ----------------------------------------------------------
   # 流量传感器

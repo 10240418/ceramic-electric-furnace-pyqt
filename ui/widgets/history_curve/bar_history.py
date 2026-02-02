@@ -18,6 +18,7 @@ class BarHistory(QWidget):
     batches_changed = pyqtSignal(list)
     time_range_changed = pyqtSignal(QDateTime, QDateTime)
     query_clicked = pyqtSignal()  # 查询按钮点击信号
+    batch_time_range_loaded = pyqtSignal(str, object, object)  # 批次时间范围加载完成信号 (batch_code, start_time, end_time)
     
     # 1. 初始化组件
     def __init__(self, accent_color: str = None, parent=None):
@@ -29,6 +30,11 @@ class BarHistory(QWidget):
         self.batch_options = []
         self.selected_batch = ""
         self.selected_batches = []
+        
+        # 批次时间范围
+        self.batch_start_time = None
+        self.batch_end_time = None
+        self.batch_duration_hours = 0.0
         
         self.history_service = get_history_query_service()
         
@@ -191,7 +197,48 @@ class BarHistory(QWidget):
     # 6. 批次选择变化
     def on_batch_changed(self, batch: str):
         self.selected_batch = batch
+        
+        # 查询批次时间范围
+        self.query_batch_time_range(batch)
+        
         self.batch_changed.emit(batch)
+    
+    # 6.1. 查询批次时间范围
+    def query_batch_time_range(self, batch_code: str):
+        """查询批次的时间范围，并更新时间选择器"""
+        if not batch_code or batch_code in ["无数据", "加载失败"]:
+            return
+        
+        try:
+            logger.info(f"查询批次 {batch_code} 的时间范围...")
+            start_time, end_time = self.history_service.query_batch_time_range(batch_code)
+            
+            if start_time and end_time:
+                self.batch_start_time = start_time
+                self.batch_end_time = end_time
+                
+                # 计算批次总时长（小时）
+                duration_seconds = (end_time - start_time).total_seconds()
+                self.batch_duration_hours = duration_seconds / 3600.0
+                
+                logger.info(f"批次 {batch_code} 时间范围: {start_time} - {end_time}, 总时长: {self.batch_duration_hours:.1f}h")
+                
+                # 更新时间选择器的时间范围
+                self.time_selector.set_batch_time_range(start_time, end_time, self.batch_duration_hours)
+                
+                # 发送批次时间范围加载完成信号
+                self.batch_time_range_loaded.emit(batch_code, start_time, end_time)
+            else:
+                logger.warning(f"批次 {batch_code} 没有找到时间范围")
+                self.batch_start_time = None
+                self.batch_end_time = None
+                self.batch_duration_hours = 0.0
+                
+        except Exception as e:
+            logger.error(f"查询批次时间范围失败: {e}", exc_info=True)
+            self.batch_start_time = None
+            self.batch_end_time = None
+            self.batch_duration_hours = 0.0
     
     # 7. 批次多选变化
     def on_batches_changed(self, batches: list):
@@ -222,6 +269,16 @@ class BarHistory(QWidget):
     # 13. 获取时间范围
     def get_time_range(self) -> tuple:
         return self.time_selector.get_time_range()
+    
+    # 13.1. 获取批次时间范围
+    def get_batch_time_range(self) -> tuple:
+        """获取批次的完整时间范围"""
+        return (self.batch_start_time, self.batch_end_time)
+    
+    # 13.2. 获取批次总时长
+    def get_batch_duration_hours(self) -> float:
+        """获取批次总时长（小时）"""
+        return self.batch_duration_hours
     
     # 14. 刷新批次列表
     def refresh_batch_list(self):

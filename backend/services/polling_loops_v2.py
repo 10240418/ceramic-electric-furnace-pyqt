@@ -61,7 +61,7 @@ _db32_running = False
 _status_running = False
 
 # DB1 轮询间隔 (秒) - 可动态修改
-_db1_interval: float = 0.5  # 固定0.5s (与 DB32 同步)
+_db1_interval: float = 0.5  # 默认0.5s，可通过配置修改为0.2s
 
 # 批量写入缓存 (与旧架构保持一致)
 _arc_buffer_count = 0
@@ -135,7 +135,8 @@ async def _db1_arc_polling_loop(
     global _db1_interval, _arc_buffer_count, _arc_batch_size
     poll_count = 0
     error_count = 0  # 连续错误计数器
-    MAX_ERROR_WAIT = 30  # 最大等待时间 (秒)
+    MAX_ERROR_COUNT = 10  # 最大错误次数，超过后固定30s
+    FIXED_WAIT_TIME = 30  # 固定等待时间（秒）
     
     logger.info(f"DB1 弧流弧压轮询已启动 (初始间隔: {_db1_interval}s)")
     
@@ -185,10 +186,6 @@ async def _db1_arc_polling_loop(
             # 成功后重置错误计数器
             error_count = 0
             
-            # 日志输出（减少频率，只在批量写入时输出）
-            # if poll_count % 25 == 0:
-            #     logger.debug(f"DB1 轮询 #{poll_count} (间隔: {_db1_interval}s, 缓存: {_arc_buffer_count}/{_arc_batch_size})")
-            
             # 动态间隔 (可被外部修改)
             await asyncio.sleep(_db1_interval)
             
@@ -196,16 +193,20 @@ async def _db1_arc_polling_loop(
             break
         except Exception as e:
             error_count += 1
-            # 指数退避: 1s, 2s, 4s, 8s, 16s, 30s (最大)
-            wait_time = min(MAX_ERROR_WAIT, 2 ** min(error_count - 1, 4))
-            logger.error(f"DB1 轮询异常 (第{error_count}次): {e}")
-            if error_count <= 3:
-                logger.error(traceback.format_exc())
-            elif error_count % 10 == 0:
-                # 每10次错误输出一次详细堆栈，避免日志爆炸
-                logger.warning(f"DB1 连续 {error_count} 次错误，等待 {wait_time}s 后重试...")
-                logger.error(traceback.format_exc())
-            await asyncio.sleep(wait_time)
+            
+            # 10次失败后，固定等待30秒
+            if error_count >= MAX_ERROR_COUNT:
+                logger.error(f"DB1 轮询异常 (第{error_count}次，已达上限): {e}")
+                if error_count == MAX_ERROR_COUNT:
+                    logger.warning(f"DB1 连续失败 {MAX_ERROR_COUNT} 次，后续每次固定等待 {FIXED_WAIT_TIME}s")
+                await asyncio.sleep(FIXED_WAIT_TIME)
+            else:
+                # 前10次使用指数退避
+                wait_time = min(FIXED_WAIT_TIME, 2 ** min(error_count - 1, 4))
+                logger.error(f"DB1 轮询异常 (第{error_count}次): {e}")
+                if error_count <= 3:
+                    logger.error(traceback.format_exc())
+                await asyncio.sleep(wait_time)
     
     logger.info("DB1 弧流弧压轮询已停止")
 
@@ -234,7 +235,8 @@ async def _db32_sensor_polling_loop(
     global _normal_buffer_count, _normal_batch_size, _valve_buffer_count, _valve_batch_size
     poll_count = 0
     error_count = 0  # 连续错误计数器
-    MAX_ERROR_WAIT = 30  # 最大等待时间 (秒)
+    MAX_ERROR_COUNT = 10  # 最大错误次数，超过后固定30s
+    FIXED_WAIT_TIME = 30  # 固定等待时间（秒）
     interval = 0.5  # 固定 0.5s (1秒2次轮询)
     
     logger.info(f"DB32 传感器轮询已启动 (间隔: {interval}s)")
@@ -354,24 +356,26 @@ async def _db32_sensor_polling_loop(
             # 成功后重置错误计数器
             error_count = 0
             
-            # 日志输出（减少频率，只在批量写入时输出）
-            # if poll_count % 60 == 0:
-            #     logger.debug(f"DB32 轮询 #{poll_count} (缓存: {_normal_buffer_count}/{_normal_batch_size}, 蝶阀: {_valve_buffer_count}/{_valve_batch_size})")
-            
             await asyncio.sleep(interval)
             
         except asyncio.CancelledError:
             break
         except Exception as e:
             error_count += 1
-            # 指数退避: 1s, 2s, 4s, 8s, 16s, 30s (最大)
-            wait_time = min(MAX_ERROR_WAIT, 2 ** min(error_count - 1, 4))
-            logger.error(f"DB32 轮询异常 (第{error_count}次): {e}")
-            if error_count <= 3:
-                logger.error(traceback.format_exc())
-            elif error_count % 10 == 0:
-                logger.warning(f"DB32 连续 {error_count} 次错误，等待 {wait_time}s 后重试...")
-            await asyncio.sleep(wait_time)
+            
+            # 10次失败后，固定等待30秒
+            if error_count >= MAX_ERROR_COUNT:
+                logger.error(f"DB32 轮询异常 (第{error_count}次，已达上限): {e}")
+                if error_count == MAX_ERROR_COUNT:
+                    logger.warning(f"DB32 连续失败 {MAX_ERROR_COUNT} 次，后续每次固定等待 {FIXED_WAIT_TIME}s")
+                await asyncio.sleep(FIXED_WAIT_TIME)
+            else:
+                # 前10次使用指数退避
+                wait_time = min(FIXED_WAIT_TIME, 2 ** min(error_count - 1, 4))
+                logger.error(f"DB32 轮询异常 (第{error_count}次): {e}")
+                if error_count <= 3:
+                    logger.error(traceback.format_exc())
+                await asyncio.sleep(wait_time)
     
     logger.info("DB32 传感器轮询已停止")
 
@@ -397,7 +401,8 @@ async def _status_polling_loop(
     """
     poll_count = 0
     error_count = 0  # 连续错误计数器
-    MAX_ERROR_WAIT = 30  # 最大等待时间 (秒)
+    MAX_ERROR_COUNT = 10  # 最大错误次数，超过后固定30s
+    FIXED_WAIT_TIME = 30  # 固定等待时间（秒）
     interval = 5.0  # 固定 5s
     
     logger.info(f"状态轮询已启动 (DB30+DB41, 间隔: {interval}s)")
@@ -447,24 +452,26 @@ async def _status_polling_loop(
             # 成功后重置错误计数器
             error_count = 0
             
-            # 日志输出（减少频率）
-            # if poll_count % 12 == 0:
-            #     logger.debug(f"状态轮询 #{poll_count}")
-            
             await asyncio.sleep(interval)
             
         except asyncio.CancelledError:
             break
         except Exception as e:
             error_count += 1
-            # 指数退避: 1s, 2s, 4s, 8s, 16s, 30s (最大)
-            wait_time = min(MAX_ERROR_WAIT, 2 ** min(error_count - 1, 4))
-            logger.error(f"状态轮询异常 (第{error_count}次): {e}")
-            if error_count <= 3:
-                logger.error(traceback.format_exc())
-            elif error_count % 10 == 0:
-                logger.warning(f"状态轮询连续 {error_count} 次错误，等待 {wait_time}s 后重试...")
-            await asyncio.sleep(wait_time)
+            
+            # 10次失败后，固定等待30秒
+            if error_count >= MAX_ERROR_COUNT:
+                logger.error(f"状态轮询异常 (第{error_count}次，已达上限): {e}")
+                if error_count == MAX_ERROR_COUNT:
+                    logger.warning(f"状态轮询连续失败 {MAX_ERROR_COUNT} 次，后续每次固定等待 {FIXED_WAIT_TIME}s")
+                await asyncio.sleep(FIXED_WAIT_TIME)
+            else:
+                # 前10次使用指数退避
+                wait_time = min(FIXED_WAIT_TIME, 2 ** min(error_count - 1, 4))
+                logger.error(f"状态轮询异常 (第{error_count}次): {e}")
+                if error_count <= 3:
+                    logger.error(traceback.format_exc())
+                await asyncio.sleep(wait_time)
     
     logger.info("状态轮询已停止")
 
@@ -494,8 +501,18 @@ async def start_all_polling_loops():
     # 获取解析器
     db1_parser, modbus_parser, status_parser, db41_parser, db18_parser, db19_parser = get_parsers()
     
-    # 重置间隔为默认值 (0.5s)
-    _db1_interval = 0.5
+    # 从配置管理器获取轮询间隔
+    from backend.config.polling_config import get_polling_config
+    polling_config = get_polling_config()
+    _db1_interval = polling_config.get_polling_interval()
+    
+    # 注册配置变化回调
+    def on_polling_speed_changed(speed):
+        global _db1_interval
+        _db1_interval = polling_config.get_polling_interval()
+        logger.info(f"DB1 轮询速度已更新: {speed} (间隔: {_db1_interval}s)")
+    
+    polling_config.register_callback(on_polling_speed_changed)
     
     # 启动标志
     _db1_running = True

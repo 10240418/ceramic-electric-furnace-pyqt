@@ -117,7 +117,7 @@ class ConfigDrivenDB32Parser:
         """
         field_offset = field.get('offset', 0)
         field_type = field.get('type', 'WORD').upper()
-        scale = field.get('scale', 1.0)
+        # 不再使用 scale 参数，直接返回原始值
         
         # 解析偏移量 (支持位域)
         byte_off, bit_off = self._parse_offset(field_offset)
@@ -140,38 +140,38 @@ class ConfigDrivenDB32Parser:
                 if abs_offset + 2 > len(data):
                     return 0
                 raw = struct.unpack('>H', data[abs_offset:abs_offset + 2])[0]
-                return raw * scale
+                return raw  # 直接返回原始值
             
             elif field_type == 'INT':
                 if abs_offset + 2 > len(data):
                     return 0
                 raw = struct.unpack('>h', data[abs_offset:abs_offset + 2])[0]
-                return raw * scale
+                return raw  # 直接返回原始值
             
             elif field_type == 'DWORD':
                 if abs_offset + 4 > len(data):
                     return 0
                 raw = struct.unpack('>I', data[abs_offset:abs_offset + 4])[0]
-                return raw * scale
+                return raw  # 直接返回原始值
             
             elif field_type == 'UDINT':
                 # 无符号双整数 (4字节, 大端序)
                 if abs_offset + 4 > len(data):
                     return 0
                 raw = struct.unpack('>I', data[abs_offset:abs_offset + 4])[0]
-                return raw * scale
+                return raw  # 直接返回原始值
             
             elif field_type == 'DINT':
                 if abs_offset + 4 > len(data):
                     return 0
                 raw = struct.unpack('>i', data[abs_offset:abs_offset + 4])[0]
-                return raw * scale
+                return raw  # 直接返回原始值
             
             elif field_type == 'REAL':
                 if abs_offset + 4 > len(data):
                     return 0.0
                 raw = struct.unpack('>f', data[abs_offset:abs_offset + 4])[0]
-                return raw * scale
+                return raw  # 直接返回原始值
             
             else:
                 print(f" 未知数据类型: {field_type}")
@@ -292,14 +292,12 @@ class ConfigDrivenDB32Parser:
             elif module_ref == 'PressureSensor':
                 fields = parsed.get('fields', {})
                 raw = fields.get('pressure', {}).get('value', 0)
-                # 原始值 × 0.001 转为 MPa，原值直接作为 kPa
-                pressure_mpa = raw * 0.001
-                pressure_kpa = raw  # 原值直接作为 kPa
+                # PLC 原始值直接使用，不乘以任何系数
+                pressure_kpa = int(raw)  # 直接使用原始值
                 result['cooling_pressures'][name] = {
-                    'pressure': round(pressure_mpa, 4),  # MPa
-                    'pressure_kpa': int(pressure_kpa),   # kPa (原值)
+                    'pressure': pressure_kpa,  # kPa (原始值)
                     'raw': int(raw),
-                    'unit': 'MPa',
+                    'unit': 'kPa',
                     'description': parsed.get('description', '')
                 }
             
@@ -447,28 +445,28 @@ if __name__ == "__main__":
     
     result = parser.parse_all(test_data)
     
-    print("\n📊 DB32 配置驱动解析结果:")
+    print("\n=== DB32 配置驱动解析结果 ===")
     print(f"时间戳: {result['timestamp']}")
     print(f"DB块: {result['db_block']} ({result['db_name']})")
     print(f"数据大小: {result['data_size']} bytes")
     
-    print("\n🔭 电极深度 (红外测距 UDInt):")
+    print("\n--- 电极深度 (红外测距 UDInt) ---")
     for name, data in result['electrode_depths'].items():
         status = "" if data['valid'] else ""
         print(f"  {status} {name}: {data['distance']} {data['unit']} - {data['description']}")
     
-    print("\n💧 冷却水压力:")
+    print("\n--- 冷却水压力 ---")
     for name, data in result['cooling_pressures'].items():
         print(f"  {name}: {data['pressure']} {data['unit']} - {data['description']}")
     
-    print("\n🌊 冷却水流量:")
+    print("\n--- 冷却水流量 ---")
     for name, data in result['cooling_flows'].items():
         print(f"  {name}: {data['flow']} {data['unit']} - {data['description']}")
     
-    print("\n 蝶阀状态监测:")
+    print("\n--- 蝶阀状态监测 ---")
     vs = result.get('valve_status', {})
     print(f"  状态字节: {vs.get('status_byte', 0)} ({vs.get('status_hex', '16#00')})")
     print(f"  开启数量: {vs.get('open_count', 0)}/8")
     for i in range(1, 9):
-        status = "🟢 开启" if vs.get(f'valve_{i}', False) else "⚪ 关闭"
+        status = "开启" if vs.get(f'valve_{i}', False) else "关闭"
         print(f"    蝶阀{i}: {status}")

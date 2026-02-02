@@ -39,30 +39,29 @@ class PressureConverter:
     """
     
     # 转换系数 (根据小数点位数)
-    # 原始公式: scale = 0.1 (MPa)
-    # 新公式: scale = 0.1 × 0.1 = 0.01 (转换为 kPa 后缩小10倍)
-    # 说明: 0.041 MPa → 41 kPa → 4.1 (最终存储值)
-    SCALE_FACTOR = 0.01  # 流速×10, 水压×0.1 (相当于 MPa→kPa 再÷10)
+    # 修改: 直接使用原始值，不乘以任何系数
+    # 原始值就是 kPa
+    SCALE_FACTOR = 1.0  # 直接使用原始值
     
     # 单位
     UNIT = "kPa"  # 修改单位为 kPa
     
     # 有效范围 (可根据实际传感器量程调整)
     MIN_VALID_PRESSURE = 0.0       # 最小有效压力 (kPa)
-    MAX_VALID_PRESSURE = 1000.0    # 最大有效压力 (kPa, 原100MPa=100000kPa, 缩小后1000)
+    MAX_VALID_PRESSURE = 100000.0  # 最大有效压力 (kPa)
     INVALID_RAW_VALUE = 0xFFFF     # 无效原始值标识
     NEGATIVE_THRESHOLD = 0x8000    # 负数阈值 (有符号整数)
     
     def __init__(self, 
-                 scale: float = 0.01,
-                 decimal_places: int = 2,
+                 scale: float = 1.0,
+                 decimal_places: int = None,
                  min_range: float = 0.0,
-                 max_range: float = 1000.0,
+                 max_range: float = 100000.0,
                  signed: bool = True):
         """初始化转换器
         
         Args:
-            scale: 转换系数 (默认 0.01，水压×0.1)
+            scale: 转换系数 (默认 1.0，直接使用原始值)
             decimal_places: 小数点位数 (用于自动计算 scale)
             min_range: 最小有效范围 (kPa)
             max_range: 最大有效范围 (kPa)
@@ -128,9 +127,9 @@ class PressureConverter:
         signed_value = self._convert_signed(raw_value)
         result["raw_signed"] = signed_value
         
-        # 计算实际压力
+        # 计算实际压力（直接使用原始值）
         pressure = signed_value * self.scale
-        result["pressure"] = round(pressure, 3)
+        result["pressure"] = round(pressure, 1)  # 保留1位小数
         
         # 范围校验
         if pressure < self.min_range:
@@ -167,11 +166,11 @@ class PressureConverter:
 _pressure_converter: Optional[PressureConverter] = None
 
 
-def get_pressure_converter(scale: float = 0.01) -> PressureConverter:
+def get_pressure_converter(scale: float = 1.0) -> PressureConverter:
     """获取 PressureConverter 单例实例
     
     Args:
-        scale: 转换系数 (默认 0.01，水压×0.1)
+        scale: 转换系数 (默认 1.0，直接使用原始值)
         
     Returns:
         PressureConverter 实例
@@ -185,12 +184,12 @@ def get_pressure_converter(scale: float = 0.01) -> PressureConverter:
 # ============================================================
 # 便捷函数
 # ============================================================
-def convert_pressure(raw_value: int, scale: float = 0.01) -> float:
+def convert_pressure(raw_value: int, scale: float = 1.0) -> float:
     """快捷转换函数: 原始值 -> 压力
     
     Args:
         raw_value: 原始值
-        scale: 转换系数 (默认 0.01，水压×0.1)
+        scale: 转换系数 (默认 1.0，直接使用原始值)
         
     Returns:
         压力值 (kPa)
@@ -249,17 +248,17 @@ if __name__ == "__main__":
     print("=" * 60)
     print("压力计数据转换器 - 测试")
     print("=" * 60)
-    print("转换公式: 压力 = 原始值 × 0.1 (MPa)")
-    print("参考手册: 原始值 5000 -> 显示 500.0 MPa (小数点1位)")
+    print("转换公式: 压力 = 原始值 × 1.0 (直接使用原始值)")
+    print("单位: kPa")
     print("=" * 60)
     
     # 测试数据
     test_cases = [
-        (0, 0.0),            # 0 -> 0.0 MPa
-        (50, 5.0),           # 50 -> 5.0 MPa
-        (505, 50.5),         # 505 -> 50.5 MPa
-        (5000, 500.0),       # 5000 -> 500.0 MPa (手册示例)
-        (0x1388, 500.0),     # 0x1388 = 5000 -> 500.0 MPa
+        (0, 0.0),            # 0 -> 0.0 kPa
+        (50, 50.0),          # 50 -> 50.0 kPa
+        (505, 505.0),        # 505 -> 505.0 kPa
+        (5000, 5000.0),      # 5000 -> 5000.0 kPa
+        (0x1388, 5000.0),    # 0x1388 = 5000 -> 5000.0 kPa
         (65535, None),       # 无效值 (0xFFFF)
     ]
     
@@ -276,8 +275,8 @@ if __name__ == "__main__":
     # 负数测试 (有符号整数)
     print("\n📊 有符号数测试 (支持负压):")
     negative_tests = [
-        (0xFFFF - 100, -10.1),  # 负值测试
-        (0x8000, -3276.8),      # 最小负值边界
+        (0xFFFF - 100, -101.0),  # 负值测试
+        (0x8000, -32768.0),      # 最小负值边界
     ]
     for raw, expected in negative_tests:
         result = converter.convert(raw)
@@ -297,5 +296,5 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("💡 使用示例:")
     print("   from backend.tools.converter_pressure import convert_pressure")
-    print("   pressure = convert_pressure(505)  # 返回 50.5 MPa")
+    print("   pressure = convert_pressure(505)  # 返回 505.0 kPa")
     print("=" * 60)

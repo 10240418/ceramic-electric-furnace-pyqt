@@ -6,7 +6,6 @@
 #   2. 专门用于读取投料相关信号
 # ============================================================
 
-from snap7.types import Areas
 from typing import Dict, Any
 from datetime import datetime
 
@@ -26,7 +25,14 @@ def read_feeding_signals(plc_client) -> Dict[str, Any]:
     """
     try:
         # 读取 Q3-Q4 (2个字节)
-        q_data = plc_client.read_area(Areas.PA, 0, 3, 2)
+        # 兼容 snap7 1.x 和 2.x 版本
+        try:
+            from snap7.snap7types import S7AreaPA
+            q_data = plc_client.read_area(S7AreaPA, 0, 3, 2)
+        except (ImportError, AttributeError):
+            # snap7 2.x: Area 直接在 snap7 模块下
+            from snap7 import Area
+            q_data = plc_client.read_area(Area.PA, 0, 3, 2)
         
         # 解析信号
         # Q3.7 = Byte 3, Bit 7 (0x80 = 10000000)
@@ -67,7 +73,14 @@ def read_output_bits_full(plc_client) -> Dict[str, Any]:
     """
     try:
         # 读取 Q0-Q4 (5个字节)
-        q_data = plc_client.read_area(Areas.PA, 0, 0, 5)
+        # 兼容 snap7 1.x 和 2.x 版本
+        try:
+            from snap7.snap7types import S7AreaPA
+            q_data = plc_client.read_area(S7AreaPA, 0, 0, 5)
+        except (ImportError, AttributeError):
+            # snap7 2.x: Area 直接在 snap7 模块下
+            from snap7 import Area
+            q_data = plc_client.read_area(Area.PA, 0, 0, 5)
         
         result = {}
         for byte_idx in range(5):

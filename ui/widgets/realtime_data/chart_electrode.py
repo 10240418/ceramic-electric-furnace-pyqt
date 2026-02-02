@@ -30,10 +30,18 @@ class ChartElectrode(QWidget):
         ]
         self.deadzone_percent = 15.0  # 死区百分比，默认15%
         
+        # 刷新间隔（毫秒）- 跟随轮询速度
+        self._refresh_interval_ms = 200  # 默认 200ms (0.2s)
+        
         self.init_ui()
         
         # 监听主题变化
         self.theme_manager.theme_changed.connect(self.on_theme_changed)
+        
+        # 监听轮询速度变化
+        from backend.config.polling_config import get_polling_config
+        self.polling_config = get_polling_config()
+        self.polling_config.register_callback(self.on_polling_speed_changed)
     
     # 2. 初始化 UI
     def init_ui(self):
@@ -254,6 +262,29 @@ class ChartElectrode(QWidget):
     def on_theme_changed(self):
         self.apply_styles()
         self.chart_widget.update()
+    
+    # 8. 轮询速度变化时更新刷新间隔
+    def on_polling_speed_changed(self, speed):
+        """轮询速度变化回调
+        
+        Args:
+            speed: "0.2s" 或 "0.5s"
+        """
+        if speed == "0.2s":
+            self._refresh_interval_ms = 200  # 0.2s = 200ms
+        else:
+            self._refresh_interval_ms = 500  # 0.5s = 500ms
+        
+        print(f" 图表刷新间隔已更新: {self._refresh_interval_ms}ms")
+    
+    # 9. 获取刷新间隔
+    def get_refresh_interval_ms(self) -> int:
+        """获取刷新间隔（毫秒）
+        
+        Returns:
+            200 或 500
+        """
+        return self._refresh_interval_ms
 
 
 class ChartWidget(QWidget):

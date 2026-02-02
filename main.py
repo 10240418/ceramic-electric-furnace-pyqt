@@ -77,9 +77,9 @@ def main():
         # 导入主窗口
         from ui import MainWindow
         
-        # 创建主窗口
+        # 创建主窗口（use_mock=False 使用真实 PLC 数据）
         logger.info("🔨 正在创建主窗口...")
-        window = MainWindow()
+        window = MainWindow(use_mock=False)
         
         # 创建系统托盘
         logger.info("🔨 正在创建系统托盘...")

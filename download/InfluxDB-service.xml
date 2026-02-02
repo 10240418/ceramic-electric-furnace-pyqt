@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<service>
+  <id>InfluxDB</id>
+  <name>InfluxDB</name>
+  <description>InfluxDB Time Series Database</description>
+  <executable>D:\influxdb\influxd.exe</executable>
+  <arguments>--bolt-path=D:\influxdb\data\influxd.bolt --engine-path=D:\influxdb\data\engine --sqlite-path=D:\influxdb\data\influxd.sqlite</arguments>
+  <workingdirectory>D:\influxdb</workingdirectory>
+  <logpath>D:\influxdb\logs</logpath>
+  <logmode>rotate</logmode>
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>false</delayedAutoStart>
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="20 sec"/>
+  <resetfailure>1 hour</resetfailure>
+</service>

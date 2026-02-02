@@ -54,13 +54,11 @@ class PowerEnergyCalculator:
     _instance: Optional['PowerEnergyCalculator'] = None
     _lock = threading.Lock()
     
-    # 队列大小: 100个点 (足够覆盖15秒的数据)
-    # 0.2s × 75 = 15s (高速)
-    # 5s × 3 = 15s (低速)
+    # 队列大小: 100个点 (足够覆盖数据)
     QUEUE_SIZE = 100
     
-    # 计算间隔: 15秒
-    CALC_INTERVAL_SEC = 15
+    # 计算触发阈值: 30条数据触发一次计算
+    CALC_TRIGGER_COUNT = 30
     
     def __new__(cls):
         if cls._instance is None:
@@ -94,9 +92,9 @@ class PowerEnergyCalculator:
         self._current_batch_code: Optional[str] = None
         
         # ============================================================
-        # 上次计算时间
+        # 计算触发计数器
         # ============================================================
-        self._last_calc_time: Optional[datetime] = None
+        self._data_count_since_last_calc: int = 0
         
         print(" 功率能耗计算器已初始化 (梯形积分法)")
     
@@ -109,9 +107,9 @@ class PowerEnergyCalculator:
         【修复】从数据库恢复累计值到内存
         """
         with self._data_lock:
-            # 清空队列和计时器
+            # 清空队列和计数器
             self._power_queue.clear()
-            self._last_calc_time = None
+            self._data_count_since_last_calc = 0
             self._current_batch_code = batch_code
             
             # 从数据库恢复累计值到内存
@@ -175,12 +173,16 @@ class PowerEnergyCalculator:
         arc_voltage_V: float,
         arc_current_W: float,
         arc_voltage_W: float,
+        power_factor: float = 1.0,  # 功率因数，默认1.0（视在功率）
     ) -> Dict[str, Any]:
         """计算总功率并添加到队列
         
         Args:
             arc_current_*: 弧流 (A)
             arc_voltage_*: 弧压 (V)
+            power_factor: 功率因数 (cos φ)，默认1.0
+                         - 1.0: 视在功率（当前公式）
+                         - 0.85-0.95: 电炉典型功率因数
             
         Returns:
             {
@@ -190,10 +192,11 @@ class PowerEnergyCalculator:
         """
         with self._data_lock:
             # 1. 计算三相总功率 (kW)
-            # P_total = (U_U × I_U + U_V × I_V + U_W × I_W) / 1000
-            power_U = (arc_current_U * arc_voltage_U) / 1000
-            power_V = (arc_current_V * arc_voltage_V) / 1000
-            power_W = (arc_current_W * arc_voltage_W) / 1000
+            # P = U × I × cos(φ) / 1000
+            # 如果 power_factor = 1.0，则计算的是视在功率
+            power_U = (arc_current_U * arc_voltage_U * power_factor) / 1000
+            power_V = (arc_current_V * arc_voltage_V * power_factor) / 1000
+            power_W = (arc_current_W * arc_voltage_W * power_factor) / 1000
             power_total = power_U + power_V + power_W
             
             # 2. 创建数据点（只存储总功率）
@@ -209,20 +212,14 @@ class PowerEnergyCalculator:
             # 3. 添加到队列
             self._power_queue.append(point)
             
-            # 4. 检查是否需要计算能耗 (每15秒)
+            # 4. 检查是否需要计算能耗 (每30条数据触发一次)
+            self._data_count_since_last_calc += 1
             should_calc = False
-            if self._last_calc_time is None:
-                # 首次计算：等待至少10个数据点
-                if len(self._power_queue) >= 10:
-                    should_calc = True
-                    self._last_calc_time = now
-            else:
-                # 后续计算：检查时间间隔
-                elapsed = (now - self._last_calc_time).total_seconds()
-                if elapsed >= self.CALC_INTERVAL_SEC:
-                    should_calc = True
-                    # 【修复】立即更新计算时间，避免重复触发
-                    self._last_calc_time = now
+            
+            if self._data_count_since_last_calc >= self.CALC_TRIGGER_COUNT:
+                should_calc = True
+                self._data_count_since_last_calc = 0
+                print(f"[ENERGY] 触发能耗计算 (队列: {len(self._power_queue)}个点, 触发阈值: {self.CALC_TRIGGER_COUNT})")
             
             return {
                 'power_total': power_total,
@@ -243,6 +240,8 @@ class PowerEnergyCalculator:
         - 自动适应轮询间隔变化
         - 考虑功率变化趋势
         
+        【修复】每次计算后清空队列，避免重复累加
+        
         Returns:
             {
                 'energy_total_delta': float,  # 总能耗增量 (kWh)
@@ -252,16 +251,14 @@ class PowerEnergyCalculator:
             }
         """
         with self._data_lock:
-            # 【修复】不在这里更新计算时间，由 calculate_power() 统一管理
             now = datetime.now(timezone.utc)
-            calc_duration = (now - self._last_calc_time).total_seconds() if self._last_calc_time else 0
             
             # 检查数据点数量
             if len(self._power_queue) < 2:
                 return {
                     'energy_total_delta': 0.0,
                     'energy_total': self._energy_total,
-                    'calc_duration': calc_duration,
+                    'calc_duration': 0.0,
                     'data_points': len(self._power_queue),
                     'message': '数据点不足'
                 }
@@ -270,6 +267,9 @@ class PowerEnergyCalculator:
             # 梯形积分法计算总能耗
             # ========================================
             data_list = list(self._power_queue)
+            
+            # 计算时长（从第一个点到最后一个点）
+            calc_duration = (data_list[-1].timestamp - data_list[0].timestamp).total_seconds()
             
             energy_total_delta = 0.0
             
@@ -287,6 +287,14 @@ class PowerEnergyCalculator:
             # 【修复】使用内存累计值
             # ========================================
             self._energy_total += energy_total_delta
+            
+            # ========================================
+            # 关键修复：清空队列，只保留最后一个点作为下次计算的起点
+            # 这样可以避免重复累加历史数据
+            # ========================================
+            last_point = self._power_queue[-1]
+            self._power_queue.clear()
+            self._power_queue.append(last_point)
             
             # ========================================
             # 返回结果（不立即写入数据库，而是返回给调用者批量写入）

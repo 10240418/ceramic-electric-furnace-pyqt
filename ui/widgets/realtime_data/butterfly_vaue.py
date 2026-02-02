@@ -66,9 +66,8 @@ class IndicatorValve(QFrame):
         percent_container_layout.setSpacing(0)
         
         # 百分比显示区 (70%) - 使用富文本，单独减小百分号，居中显示
-        self.percent_label = QLabel("0%")
+        self.percent_label = QLabel()
         self.percent_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.percent_label.setMinimumWidth(100)
         self.percent_label.setTextFormat(Qt.TextFormat.RichText)  # 启用富文本
         percent_container_layout.addWidget(self.percent_label, 70)
         
@@ -77,6 +76,9 @@ class IndicatorValve(QFrame):
         percent_container_layout.addWidget(spacer_widget, 10)
         
         bottom_layout.addWidget(percent_container, 80)
+        
+        # 初始化时就设置富文本样式
+        self.update_percent_display()
         
         left_layout.addWidget(bottom_widget, 40)
         
@@ -109,24 +111,29 @@ class IndicatorValve(QFrame):
         btn.setFont(font)
         return btn
     
-    # 4. 设置状态
+    # 4. 更新百分比显示
+    def update_percent_display(self):
+        """更新百分比显示（使用富文本，数值36px，百分号24px）"""
+        colors = self.theme_manager.get_colors()
+        value = int(self.open_percentage)
+        self.percent_label.setText(
+            f'<span style="font-size: 36px; font-weight: bold; font-family: Roboto Mono; color: {colors.TEXT_PRIMARY};">{value}</span>'
+            f'<span style="font-size: 24px; font-weight: normal; font-family: Roboto Mono; color: {colors.TEXT_PRIMARY};">%</span>'
+        )
+    
+    # 5. 设置状态
     def set_status(self, status: str, open_percent: float):
         self.current_status = status
         self.open_percentage = max(0.0, min(100.0, open_percent))
         
-        # 更新百分比显示（使用富文本，数值32px，百分号20px）
-        value = int(self.open_percentage)
-        self.percent_label.setText(
-            f'<span style="font-size: 32px; font-weight: bold; font-family: Roboto Mono;">{value}</span>'
-            f'<span style="font-size: 20px; font-weight: normal; font-family: Roboto Mono;">%</span>'
-        )
+        # 更新百分比显示
+        self.update_percent_display()
         
         # 更新样式
         self.update_status_buttons()
-        self.update_percent_color()
         self.gauge_widget.update()
     
-    # 5. 更新状态按钮样式（简化为主按钮样式）
+    # 6. 更新状态按钮样式（简化为主按钮样式）
     def update_status_buttons(self):
         colors = self.theme_manager.get_colors()
         
@@ -140,7 +147,7 @@ class IndicatorValve(QFrame):
         self.btn_stop.setStyleSheet(self.get_button_style(is_stop_active, colors))
         self.btn_open.setStyleSheet(self.get_button_style(is_open_active, colors))
     
-    # 6. 获取按钮样式（主按钮样式，取消圆角和padding，完全贴边）
+    # 7. 获取按钮样式（主按钮样式，取消圆角和padding，完全贴边）
     def get_button_style(self, is_active: bool, colors) -> str:
         if is_active:
             # 激活状态：主按钮样式
@@ -169,17 +176,6 @@ class IndicatorValve(QFrame):
                     font-weight: normal;
                 }}
             """
-    
-    # 7. 更新百分比颜色（黑白配色）
-    def update_percent_color(self):
-        colors = self.theme_manager.get_colors()
-        self.percent_label.setStyleSheet(f"""
-            QLabel {{
-                color: {colors.TEXT_PRIMARY};
-                background: transparent;
-                border: none;
-            }}
-        """)
     
     # 8. 应用样式
     def apply_styles(self):
@@ -210,8 +206,16 @@ class IndicatorValve(QFrame):
             }}
         """)
         
+        # 百分比标签样式（不设置字体大小，让富文本控制）
+        self.percent_label.setStyleSheet(f"""
+            QLabel {{
+                background: transparent;
+                border: none;
+            }}
+        """)
+        
         self.update_status_buttons()
-        self.update_percent_color()
+        self.update_percent_display()
     
     # 9. 主题变化时重新应用样式
     def on_theme_changed(self):

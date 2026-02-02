@@ -120,7 +120,7 @@ class DialogSetArcLimit(QDialog):
                 return
             
             # 调用后端服务写入 PLC
-            from backend.services.input.arc_limit_input import set_arc_limit
+            from backend.services.db1.input_service import set_arc_limit
             
             logger.info(f"准备写入弧流上限值: {limit_value} A")
             

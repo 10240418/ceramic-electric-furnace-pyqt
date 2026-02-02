@@ -107,18 +107,72 @@ class ServiceManager:
     def stop_all(self):
         logger.info("正在停止所有后端服务...")
         
-        # 停止 asyncio 事件循环
+        # 1. 停止 asyncio 事件循环中的所有任务
         if self.loop and self.loop.is_running():
+            logger.info("正在停止 asyncio 事件循环...")
+            
+            # 停止所有轮询任务
+            try:
+                from backend.services.polling_loops_v2 import stop_all_polling_loops
+                import asyncio
+                
+                # 在事件循环中执行停止操作
+                future = asyncio.run_coroutine_threadsafe(
+                    stop_all_polling_loops(),
+                    self.loop
+                )
+                # 等待停止完成（最多2秒）
+                future.result(timeout=2.0)
+                logger.info("轮询任务已停止")
+            except Exception as e:
+                logger.warning(f"停止轮询任务失败: {e}")
+            
+            # 停止事件循环
             self.loop.call_soon_threadsafe(self.loop.stop)
+            logger.info("事件循环已停止")
         
-        # 设置停止事件
+        # 2. 关闭 PLC 连接
+        try:
+            from backend.plc.plc_manager import get_plc_manager
+            plc = get_plc_manager()
+            plc.disconnect()
+            logger.info("PLC 连接已关闭")
+        except Exception as e:
+            logger.warning(f"关闭 PLC 连接失败: {e}")
+        
+        # 3. 关闭 InfluxDB 客户端
+        try:
+            from backend.core.influxdb import close_influx_client
+            close_influx_client()
+            logger.info("InfluxDB 客户端已关闭")
+        except Exception as e:
+            logger.warning(f"关闭 InfluxDB 客户端失败: {e}")
+        
+        # 4. 设置停止事件
         self.stop_event.set()
         
-        # 等待所有线程结束
+        # 5. 等待所有线程结束
         for thread in self.threads:
-            thread.join(timeout=2)
+            thread.join(timeout=3)
             if thread.is_alive():
-                logger.warning(f"线程 {thread.name} 未能在 2 秒内停止")
+                logger.warning(f"线程 {thread.name} 未能在 3 秒内停止")
+        
+        # 6. 关闭事件循环
+        if self.loop:
+            try:
+                # 等待事件循环完全停止
+                import time
+                timeout = 3
+                start_time = time.time()
+                while self.loop.is_running() and (time.time() - start_time) < timeout:
+                    time.sleep(0.1)
+                
+                # 关闭事件循环
+                if not self.loop.is_closed():
+                    self.loop.close()
+                    logger.info("事件循环已关闭")
+            except Exception as e:
+                logger.warning(f"关闭事件循环失败: {e}")
         
         logger.info("所有后端服务已停止")
     

@@ -143,9 +143,9 @@ class BatchService:
         self._pause_time = None
         self._total_pause_duration = 0.0
         
-        # 【修改】统一处理：无论是续炼还是新批次，每次计算时都从数据库查询最新值
+        # 统一处理：无论是续炼还是新批次，每次计算时都从数据库查询最新值
         # 只需要重置累计器（清空队列、设置批次号）
-        print(f"🆕 开始冶炼：批次号 {batch_code}")
+        print(f"[BatchService] 开始冶炼：批次号 {batch_code}")
         self._reset_accumulators(batch_code)
         
         # 持久化状态
@@ -166,7 +166,7 @@ class BatchService:
             cooling_calc = get_cooling_water_calculator()
             cooling_calc.reset_for_new_batch(batch_code)
         except Exception as e:
-            print(f" 重置冷却水累计流量失败: {e}")
+            print(f"[BatchService] 重置冷却水累计流量失败: {e}")
         
         # 重置投料累计器
         try:
@@ -174,7 +174,7 @@ class BatchService:
             feeding_acc = get_feeding_plc_accumulator()
             feeding_acc.reset_for_new_batch(batch_code)
         except Exception as e:
-            print(f" 重置投料累计器失败: {e}")
+            print(f"[BatchService] 重置投料累计器失败: {e}")
         
         # 重置能耗计算器
         try:
@@ -182,7 +182,7 @@ class BatchService:
             power_calc = get_power_energy_calculator()
             power_calc.reset_for_new_batch(batch_code)
         except Exception as e:
-            print(f" 重置能耗计算器失败: {e}")
+            print(f"[BatchService] 重置能耗计算器失败: {e}")
     
     def pause(self) -> dict:
         """
@@ -442,11 +442,11 @@ class BatchService:
                 self._total_pause_duration = state_data.get("total_pause_duration", 0.0)
                 self._pause_time = None  # 断电恢复后不计算暂停时长
                 
-                print(f"[BatchService] 🔄 断电恢复: 批次={self._batch_code}, 状态=running")
+                print(f"[BatchService] 断电恢复: 批次={self._batch_code}, 状态=running")
                 print(f"[BatchService]    原状态={saved_state}, 已运行={self.elapsed_seconds:.0f}秒")
-                print(f"[BatchService]     自动恢复为运行状态，继续写入数据")
+                print(f"[BatchService]    自动恢复为运行状态，继续写入数据")
                 
-                # 【修复】断电恢复时也需要重置累计器，设置批次号
+                # 断电恢复时也需要重置累计器，设置批次号
                 if self._batch_code:
                     self._reset_accumulators(self._batch_code)
             else:

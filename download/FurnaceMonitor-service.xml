@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<service>
+  <id>FurnaceMonitor</id>
+  <name>FurnaceMonitor</name>
+  <description>3# Electric Furnace Monitoring System</description>
+  <executable>D:\dist\3号电炉\3号电炉.exe</executable>
+  <workingdirectory>D:\dist\3号电炉</workingdirectory>
+  <logpath>D:\dist\3号电炉\logs</logpath>
+  <logmode>rotate</logmode>
+  
+  <!-- 依赖 InfluxDB 服务，确保 InfluxDB 先启动 -->
+  <depend>InfluxDB</depend>
+  
+  <!-- 开机自动启动，延迟 15 秒（等待 InfluxDB 完全启动） -->
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  
+  <!-- 崩溃自动重启 -->
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="20 sec"/>
+  <resetfailure>1 hour</resetfailure>
+  
+  <!-- 停止超时时间 -->
+  <stoptimeout>30 sec</stoptimeout>
+  
+  <!-- 启动前强制杀死所有同名进程，确保单实例 -->
+  <prestart>
+    <executable>powershell.exe</executable>
+    <arguments>-NoProfile -Command "Get-Process -Name '3号电炉' -ErrorAction SilentlyContinue | Stop-Process -Force"</arguments>
+  </prestart>
+  
+  <!-- 停止时强制杀死进程 -->
+  <stopexecutable>powershell.exe</stopexecutable>
+  <stoparguments>-NoProfile -Command "Get-Process -Name '3号电炉' -ErrorAction SilentlyContinue | Stop-Process -Force"</stoparguments>
+  
+  <!-- 环境变量 -->
+  <env name="PYTHONUNBUFFERED" value="1"/>
+</service>
+

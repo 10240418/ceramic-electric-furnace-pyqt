@@ -23,6 +23,11 @@ class WidgetTimeSelector(QWidget):
         self.start_time = QDateTime.currentDateTime().addDays(-1)
         self.end_time = QDateTime.currentDateTime()
         
+        # 批次时间范围
+        self.batch_start_time = None
+        self.batch_end_time = None
+        self.batch_duration_hours = 0.0
+        
         # 快速时间选项（小时）
         self.quick_options = [3, 7, 12, 24, 32]
         self.selected_hours = None
@@ -117,9 +122,19 @@ class WidgetTimeSelector(QWidget):
         # 更新选中状态
         self.selected_hours = hours
         
-        # 计算时间范围
-        self.end_time = QDateTime.currentDateTime()
-        self.start_time = self.end_time.addSecs(-hours * 3600)
+        # 如果有批次时间范围，从批次起始时间开始计算
+        if self.batch_start_time and self.batch_end_time:
+            self.start_time = self.batch_start_time
+            # 计算结束时间：起始时间 + hours 小时
+            self.end_time = self.batch_start_time.addSecs(hours * 3600)
+            
+            # 确保不超过批次结束时间
+            if self.end_time > self.batch_end_time:
+                self.end_time = self.batch_end_time
+        else:
+            # 没有批次时间范围，使用当前时间往前推
+            self.end_time = QDateTime.currentDateTime()
+            self.start_time = self.end_time.addSecs(-hours * 3600)
         
         # 更新时间按钮显示
         self.start_button.setText(self.start_time.toString("MM/dd HH:mm"))
@@ -153,6 +168,49 @@ class WidgetTimeSelector(QWidget):
         self.start_button.setText(start.toString("MM/dd HH:mm"))
         self.end_button.setText(end.toString("MM/dd HH:mm"))
         self.clear_quick_selection()
+    
+    # 8.1. 设置批次时间范围
+    def set_batch_time_range(self, start_time, end_time, duration_hours: float):
+        """
+        设置批次的时间范围，并根据批次时长禁用不可用的快速选择按钮
+        
+        Args:
+            start_time: 批次起始时间（datetime）
+            end_time: 批次结束时间（datetime）
+            duration_hours: 批次总时长（小时）
+        """
+        from datetime import datetime
+        from loguru import logger
+        
+        # 保存批次时间范围
+        self.batch_start_time = QDateTime(start_time)
+        self.batch_end_time = QDateTime(end_time)
+        self.batch_duration_hours = duration_hours
+        
+        # 默认显示完整时间范围
+        self.start_time = self.batch_start_time
+        self.end_time = self.batch_end_time
+        self.start_button.setText(self.start_time.toString("MM/dd HH:mm"))
+        self.end_button.setText(self.end_time.toString("MM/dd HH:mm"))
+        
+        logger.info(f"设置批次时间范围: {start_time} - {end_time}, 总时长: {duration_hours:.1f}h")
+        
+        # 根据批次时长禁用/启用快速选择按钮
+        for i, btn in enumerate(self.quick_buttons):
+            hours = self.quick_options[i]
+            
+            # 如果批次时长小于该选项，禁用按钮
+            if duration_hours < hours:
+                btn.setEnabled(False)
+                logger.info(f"禁用 {hours}H 按钮（批次时长 {duration_hours:.1f}h < {hours}h）")
+            else:
+                btn.setEnabled(True)
+        
+        # 清除选中状态
+        self.clear_quick_selection()
+        
+        # 重新应用样式
+        self.apply_styles()
     
     # 9. 应用样式
     def apply_styles(self):
@@ -229,6 +287,12 @@ class WidgetTimeSelector(QWidget):
             }}
             QPushButton#quick_time_btn[selected="true"]:hover {{
                 background: {self.accent_color}CC;
+            }}
+            QPushButton#quick_time_btn:disabled {{
+                background: {colors.BG_MEDIUM};
+                color: {colors.TEXT_DISABLED};
+                border: 1px solid {colors.BORDER_LIGHT};
+                opacity: 0.5;
             }}
             
             QLabel#separator_label {{

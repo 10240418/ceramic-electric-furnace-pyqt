@@ -158,7 +158,7 @@ class CardData(QFrame):
         label = QLabel(item.label)
         label.setStyleSheet(f"""
             QLabel {{
-                color: {colors.TEXT_SECONDARY};
+                color: {colors.TEXT_PRIMARY};
                 font-size: 16px;
                 border: none;
                 background: transparent;
@@ -308,6 +308,8 @@ class CardData(QFrame):
             return batch_service.is_smelting
         except Exception as e:
             return False
+    
+
     
     # 4.1 重新创建所有组件
     def _recreate_all_items(self):

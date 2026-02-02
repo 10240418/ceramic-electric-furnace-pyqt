@@ -395,7 +395,7 @@ class HistoryQueryService:
         batch_code: str,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
-        limit: int = 1000
+        limit: int = 300
     ) -> List[Dict[str, Any]]:
         """
         查询投料记录（每次投料的详细记录）
@@ -574,7 +574,62 @@ class HistoryQueryService:
         else:
             return '|> range(start: -90d)'
     
-    # 14. 查询批次统计数据（用于批次对比）
+    # 14. 查询批次的时间范围
+    def query_batch_time_range(self, batch_code: str) -> Tuple[Optional[datetime], Optional[datetime]]:
+        """
+        查询批次的起始时间和结束时间（第一条和最后一条数据的时间）
+        
+        Args:
+            batch_code: 批次号
+            
+        Returns:
+            (start_time, end_time) 元组（北京时间），如果查询失败返回 (None, None)
+        """
+        try:
+            # 查询该批次的所有数据时间点（使用弧流数据作为参考）
+            query = f'''
+            from(bucket: "{settings.influx_bucket}")
+              |> range(start: -90d)
+              |> filter(fn: (r) => r["_measurement"] == "sensor_data")
+              |> filter(fn: (r) => r["batch_code"] == "{batch_code}")
+              |> filter(fn: (r) => r["_field"] == "arc_current_U")
+              |> keep(columns: ["_time"])
+              |> group()
+            '''
+            
+            result = self.query_api.query(query)
+            
+            times = []
+            for table in result:
+                for record in table.records:
+                    times.append(record.get_time())
+            
+            if not times:
+                logger.warning(f"批次 {batch_code} 没有找到数据")
+                return (None, None)
+            
+            # 排序获取最早和最晚时间
+            times.sort()
+            start_time_utc = times[0]
+            end_time_utc = times[-1]
+            
+            # 转换为北京时间
+            start_time_beijing = self._utc_to_beijing(start_time_utc)
+            end_time_beijing = self._utc_to_beijing(end_time_utc)
+            
+            # 转换为 datetime 对象（去掉时区信息，保持北京时间）
+            from dateutil import parser
+            start_time = parser.isoparse(start_time_beijing).replace(tzinfo=None)
+            end_time = parser.isoparse(end_time_beijing).replace(tzinfo=None)
+            
+            logger.info(f"批次 {batch_code} 时间范围: {start_time} - {end_time}")
+            return (start_time, end_time)
+            
+        except Exception as e:
+            logger.error(f"查询批次时间范围失败: {e}", exc_info=True)
+            return (None, None)
+    
+    # 15. 查询批次统计数据（用于批次对比）
     def query_batch_statistics(self, batch_code: str) -> Dict[str, Any]:
         """
         查询单个批次的统计数据
@@ -723,7 +778,7 @@ class HistoryQueryService:
                 'end_time': None
             }
     
-    # 15. 删除指定批次的所有数据
+    # 16. 删除指定批次的所有数据
     def delete_batch_data(self, batch_code: str) -> dict:
         """
         删除指定批次的所有数据

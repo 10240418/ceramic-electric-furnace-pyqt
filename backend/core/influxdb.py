@@ -79,8 +79,10 @@ from functools import lru_cache
 import threading
 
 from backend.config import get_settings
+from backend.core.log_throttler import get_error_log_throttler
 
 settings = get_settings()
+log_throttler = get_error_log_throttler()
 
 # 写入锁
 _write_lock = threading.Lock()
@@ -89,9 +91,39 @@ _write_lock = threading.Lock()
 # ============================================================
 # 1: 客户端管理模块
 # ============================================================
-@lru_cache()
+_influx_client_instance: Optional[InfluxDBClient] = None
+_client_lock = threading.Lock()
+
+
 def get_influx_client() -> InfluxDBClient:
-    return InfluxDBClient(url=settings.influx_url, token=settings.influx_token, org=settings.influx_org)
+    """获取 InfluxDB 客户端单例"""
+    global _influx_client_instance
+    
+    if _influx_client_instance is None:
+        with _client_lock:
+            if _influx_client_instance is None:
+                _influx_client_instance = InfluxDBClient(
+                    url=settings.influx_url, 
+                    token=settings.influx_token, 
+                    org=settings.influx_org
+                )
+    
+    return _influx_client_instance
+
+
+def close_influx_client():
+    """关闭 InfluxDB 客户端连接"""
+    global _influx_client_instance
+    
+    if _influx_client_instance is not None:
+        with _client_lock:
+            if _influx_client_instance is not None:
+                try:
+                    _influx_client_instance.close()
+                    _influx_client_instance = None
+                    log_throttler.reset("influxdb_close_failed")
+                except Exception as e:
+                    log_throttler.log_error("influxdb_close_failed", f"关闭 InfluxDB 客户端失败: {e}")
 
 
 # 别名：兼容旧代码中的 get_influxdb_client 调用
@@ -104,9 +136,13 @@ def check_influx_health() -> Tuple[bool, str]:
         client = get_influx_client()
         health = client.health()
         if health.status == "pass":
+            # 连接成功，重置限流器
+            log_throttler.reset("influxdb_connect_failed")
             return (True, "InfluxDB 正常")
         return (False, f"InfluxDB 状态: {health.status}")
     except Exception as e:
+        # 使用限流器记录错误日志（60秒内只记录一次）
+        log_throttler.log_error("influxdb_connect_failed", f"InfluxDB 连接失败: {e}")
         return (False, str(e))
 
 
@@ -124,9 +160,13 @@ def write_point(measurement: str, tags: Dict[str, str], fields: Dict[str, Any], 
         
         with _write_lock:
             write_api.write(bucket=settings.influx_bucket, org=settings.influx_org, record=point)
+        
+        # 写入成功，重置限流器
+        log_throttler.reset("influxdb_write_failed")
         return True
     except Exception as e:
-        print(f" InfluxDB 写入失败: {e}")
+        # 使用限流器记录错误日志（60秒内只记录一次）
+        log_throttler.log_error("influxdb_write_failed", f"InfluxDB 写入失败: {e}")
         return False
 
 
@@ -142,8 +182,12 @@ def write_points_batch(points: List[Point]) -> Tuple[bool, str]:
         with _write_lock:
             write_api.write(bucket=settings.influx_bucket, org=settings.influx_org, record=points)
         
+        # 写入成功，重置限流器
+        log_throttler.reset("influxdb_batch_write_failed")
         return (True, "")
     except Exception as e:
+        # 使用限流器记录错误日志（60秒内只记录一次）
+        log_throttler.log_error("influxdb_batch_write_failed", f"InfluxDB 批量写入失败: {e}")
         return (False, str(e))
 
 
@@ -231,7 +275,11 @@ def query_data(
                     "value": record.get_value(),
                     **{k: v for k, v in record.values.items() if not k.startswith("_")}
                 })
+        
+        # 查询成功，重置限流器
+        log_throttler.reset("influxdb_query_failed")
         return data
     except Exception as e:
-        print(f" InfluxDB 查询失败: {e}")
+        # 使用限流器记录错误日志（60秒内只记录一次）
+        log_throttler.log_error("influxdb_query_failed", f"InfluxDB 查询失败: {e}")
         return []
