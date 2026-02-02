@@ -1,9 +1,18 @@
+# ========================================
 # Python
+# ========================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+*.pyc
+*.pyo
+*.pyd
+
+# ========================================
+# Build & Distribution
+# ========================================
 build/
 develop-eggs/
 dist/
@@ -23,45 +32,140 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# PyInstaller
+*.spec
+*.manifest
+
+# ========================================
 # Virtual Environment
+# ========================================
 venv/
 ENV/
 env/
 .venv
+.virtualenv
 
+# ========================================
 # PyQt6
+# ========================================
 *.ui.py
 *.qrc.py
 
-# IDE
+# ========================================
+# IDE & Editors
+# ========================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
+*.sublime-project
+*.sublime-workspace
 
+# ========================================
 # Logs
+# ========================================
 logs/
 *.log
+*.log.*
+*.out
+*.err
 
+# ========================================
 # Test files
+# ========================================
 test_*.py
 *_test.py
+tests/__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
 
+# ========================================
 # Temporary files
+# ========================================
 *.tmp
 *.bak
 *.swp
 .cache/
+*.orig
 
+# ========================================
 # OS
+# ========================================
 Thumbs.db
 desktop.ini
+.DS_Store
+*.lnk
 
+# ========================================
 # Project specific
+# ========================================
+# HTML 预览文件
 *.html
 theme_preview_interactive.html
 
-# Cursor
+# 数据文件
+data/batch_state.json
+data/alarm_thresholds.json
+
+# 配置文件（敏感信息）
+backend/config.py
+config.py
+
+# 部署相关
+download/*.ps1
+download/*.xml
+download/WinSW.exe
+download/*.zip
+download/*.txt
+
+# 文档草稿
+vdoc/*_draft.md
+vdoc/*_temp.md
+
+# 备份文件
+*_backup/
+*_old/
+*_backup_*/
+
+# ========================================
+# Cursor AI
+# ========================================
+.cursor/
+.cursorrules
+
+# ========================================
+# Database
+# ========================================
+*.db
+*.sqlite
+*.sqlite3
+
+# ========================================
+# Environment Variables
+# ========================================
+.env
+.env.local
+.env.*.local
+
+# ========================================
+# Certificates & Keys
+# ========================================
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# ========================================
+# Media files (if not needed in repo)
+# ========================================
+# assets/sounds/*.mp3
+# assets/images/*.png
+# assets/icons/*.svg
 

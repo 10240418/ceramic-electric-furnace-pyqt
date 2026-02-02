@@ -412,16 +412,16 @@ class HistoryQueryService:
         try:
             time_filter = self._build_time_filter(batch_code, start_time, end_time)
             
-            # 使用新标签格式查询
+            # 只查询 discharge_weight 字段（每次投料的重量）
+            # 注意：不使用 pivot，因为可能导致数据丢失
             query = f'''
             from(bucket: "{settings.influx_bucket}")
               {time_filter}
               |> filter(fn: (r) => r["_measurement"] == "sensor_data")
               |> filter(fn: (r) => r["batch_code"] == "{batch_code}")
-              |> filter(fn: (r) => r["_field"] == "discharge_weight" or r["_field"] == "feeding_total")
               |> filter(fn: (r) => r["module_type"] == "feeding")
               |> filter(fn: (r) => r["device_type"] == "hopper")
-              |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+              |> filter(fn: (r) => r["_field"] == "discharge_weight")
               |> sort(columns: ["_time"], desc: true)
               |> limit(n: {limit})
             '''
@@ -434,14 +434,15 @@ class HistoryQueryService:
                 for record in table.records:
                     utc_time = record.get_time()
                     beijing_time = self._utc_to_beijing(utc_time)
-                    discharge_weight = record.values.get('discharge_weight', 0.0)
-                    feeding_total = record.values.get('feeding_total', 0.0)
+                    discharge_weight = record.get_value()
                     
-                    records.append({
-                        'time': beijing_time,
-                        'discharge_weight': discharge_weight,
-                        'feeding_total': feeding_total
-                    })
+                    # 只返回有效的投料记录（排料重量 > 0）
+                    if discharge_weight and discharge_weight > 0:
+                        records.append({
+                            'time': beijing_time,
+                            'discharge_weight': discharge_weight,
+                            'feeding_total': 0.0  # 占位，前端不使用
+                        })
             
             logger.info(f"查询到 {len(records)} 条投料记录")
             return records

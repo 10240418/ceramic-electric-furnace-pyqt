@@ -148,15 +148,17 @@ class PagePollingConfig(QWidget):
             }}
             
             QLabel#title {{
-                color: {colors.GLOW_PRIMARY};
+                color: {colors.TEXT_PRIMARY};
                 font-size: 24px;
                 font-weight: bold;
+                background: transparent;
             }}
             
             QLabel#description {{
                 color: {colors.TEXT_PRIMARY};
                 font-size: 14px;
                 line-height: 1.6;
+                background: transparent;
             }}
             
             QFrame#configPanel {{
@@ -166,9 +168,10 @@ class PagePollingConfig(QWidget):
             }}
             
             QLabel#sectionLabel {{
-                color: {colors.GLOW_PRIMARY};
+                color: {colors.TEXT_PRIMARY};
                 font-size: 16px;
                 font-weight: bold;
+                background: transparent;
             }}
             
             QRadioButton {{
@@ -176,6 +179,7 @@ class PagePollingConfig(QWidget):
                 font-size: 14px;
                 font-weight: bold;
                 spacing: 8px;
+                background: transparent;
             }}
             
             QRadioButton::indicator {{
@@ -199,6 +203,7 @@ class PagePollingConfig(QWidget):
                 color: {colors.TEXT_SECONDARY};
                 font-size: 12px;
                 margin-left: 26px;
+                background: transparent;
             }}
             
             QFrame#impactPanel {{
@@ -210,6 +215,7 @@ class PagePollingConfig(QWidget):
             QLabel#impactItem {{
                 color: {colors.TEXT_PRIMARY};
                 font-size: 13px;
+                background: transparent;
             }}
         """)
     

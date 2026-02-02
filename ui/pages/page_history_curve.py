@@ -133,6 +133,10 @@ class PageHistoryCurve(QWidget):
         
         # 查询线程
         self.query_thread = None
+        
+        # 重试计数器
+        self.load_retry_count = 0
+        self.max_retry_count = 10  # 最大重试次数
     
     # 2. 加载初始数据
     def load_initial_data(self):
@@ -141,9 +145,19 @@ class PageHistoryCurve(QWidget):
         
         # 等待 bar_history 加载完批次列表
         if not self.bar_history.get_selected_batch():
-            logger.warning("批次列表尚未加载，延迟重试...")
+            # 检查重试次数
+            self.load_retry_count += 1
+            if self.load_retry_count > self.max_retry_count:
+                logger.error(f"批次列表加载失败，已重试 {self.max_retry_count} 次，停止重试")
+                logger.error("可能原因: InfluxDB 连接失败或认证失败，请检查配置")
+                return
+            
+            logger.warning(f"批次列表尚未加载，延迟重试... (第 {self.load_retry_count}/{self.max_retry_count} 次)")
             QTimer.singleShot(1000, self.load_initial_data)
             return
+        
+        # 重置重试计数器
+        self.load_retry_count = 0
         
         # 获取最新批次
         self.selected_batch = self.bar_history.get_selected_batch()
@@ -753,12 +767,24 @@ class PageHistoryCurve(QWidget):
         
         if not self.is_initialized:
             # 首次显示，延迟加载数据（等待 UI 渲染完成）
+            # 重置重试计数器
+            self.load_retry_count = 0
             QTimer.singleShot(500, self.load_initial_data)
             self.is_initialized = True
         else:
             # 非首次显示，立即重新加载批次列表
             logger.info("页面显示，重新加载批次列表...")
             self.bar_history.load_batch_list()
+    
+    def hideEvent(self, event):
+        """页面隐藏时停止查询线程"""
+        super().hideEvent(event)
+        
+        # 停止查询线程
+        if self.query_thread and self.query_thread.isRunning():
+            logger.info("页面隐藏，停止查询线程...")
+            self.query_thread.quit()
+            self.query_thread.wait()
     
     # 20. 弧压/流/电极导出
     def on_arc_export_clicked(self):

@@ -75,12 +75,32 @@ class PollingConfig:
             
             print(f" 轮询速度已修改: {old_speed} -> {speed}")
             
-            # 通知所有回调函数
+            # 异步通知所有回调函数（避免阻塞 UI 线程）
             for callback in self._callbacks:
                 try:
-                    callback(speed)
+                    # 使用 lambda 捕获当前的 callback 和 speed
+                    self._async_call_callback(callback, speed)
                 except Exception as e:
-                    print(f" 回调函数执行失败: {e}")
+                    print(f" 回调函数调度失败: {e}")
+    
+    # 3.1. 异步调用回调函数
+    def _async_call_callback(self, callback, speed):
+        """异步调用回调函数（在下一个事件循环中执行）"""
+        try:
+            # 尝试使用 QTimer.singleShot 异步调用
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self._safe_call_callback(callback, speed))
+        except:
+            # 如果 PyQt6 不可用，直接同步调用
+            self._safe_call_callback(callback, speed)
+    
+    # 3.2. 安全调用回调函数
+    def _safe_call_callback(self, callback, speed):
+        """安全调用回调函数（捕获异常）"""
+        try:
+            callback(speed)
+        except Exception as e:
+            print(f" 回调函数执行失败: {e}")
     
     # 4. 注册回调函数
     def register_callback(self, callback):

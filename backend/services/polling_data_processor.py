@@ -1104,6 +1104,7 @@ def process_hopper_plc_data(
         # 7. 当排料标志为 True 时，生成投料记录并立即写入数据库
         if discharge_weight_ready and discharge_weight > 0 and batch_code:
             from backend.services.hopper.accumulator import get_feeding_plc_accumulator
+            from loguru import logger
             
             accumulator = get_feeding_plc_accumulator()
             
@@ -1115,6 +1116,32 @@ def process_hopper_plc_data(
                 current_weight=current_weight,
                 upper_limit=upper_limit
             ))
+            
+            # 8. 写入 DB19.2.3 = False，告诉 PLC "我已经读取了"
+            try:
+                from backend.plc.plc_manager import get_plc_manager
+                plc = get_plc_manager()
+                
+                if plc.is_connected():
+                    # 构建新的 DB19 数据：将 Byte 2, Bit 3 设置为 False
+                    # 当前 Byte 2 = 0x08 = 00001000b (Bit 3 = True)
+                    # 清零后 Byte 2 = 0x00 = 00000000b (Bit 3 = False)
+                    new_db19_data = bytearray(db19_data)
+                    new_db19_data[2] &= ~(1 << 3)  # 清零 Bit 3
+                    
+                    # 写入 DB19
+                    write_result = plc.write_db(19, 0, bytes(new_db19_data))
+                    if write_result[0]:
+                        logger.info(f"已清零 DB19.2.3 标志位 (本次排料: {discharge_weight:.1f}kg)")
+                    else:
+                        logger.error(f"清零 DB19.2.3 失败: {write_result[1]}")
+                else:
+                    logger.warning("PLC 未连接，无法清零 DB19.2.3")
+            
+            except Exception as write_err:
+                logger.error(f"写入 DB19.2.3 失败: {write_err}")
+                import traceback
+                logger.error(traceback.format_exc())
         
         # 8. 更新 DataCache + 发送信号 DataBridge
         try:
