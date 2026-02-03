@@ -33,8 +33,12 @@ share/python-wheels/
 MANIFEST
 
 # PyInstaller
-*.spec
+# *.spec  # 保留 build_exe.spec，不要忽略
 *.manifest
+
+# PyInstaller 钩子目录（不要忽略，这是项目的一部分）
+# hooks/
+# rthooks/
 
 # ========================================
 # Virtual Environment

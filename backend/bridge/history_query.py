@@ -301,7 +301,9 @@ class HistoryQueryService:
         interval: str = "1m"
     ) -> Dict[str, Any]:
         """
-        查询料仓历史数据
+        查询料仓历史数据（投料累计曲线）
+        
+        注意：投料累计数据是阶梯状的，每次投料时才会更新，所以不使用聚合
         
         Returns:
             包含 feeding_total 的字典
@@ -309,7 +311,7 @@ class HistoryQueryService:
         try:
             time_filter = self._build_time_filter(batch_code, start_time, end_time)
             
-            # 查询投料累计 (使用新标签格式)
+            # 查询投料累计（不使用聚合，保留所有数据点）
             query_feeding = f'''
             from(bucket: "{settings.influx_bucket}")
               {time_filter}
@@ -318,7 +320,7 @@ class HistoryQueryService:
               |> filter(fn: (r) => r["module_type"] == "feeding")
               |> filter(fn: (r) => r["device_type"] == "hopper")
               |> filter(fn: (r) => r["_field"] == "feeding_total")
-              |> aggregateWindow(every: {interval}, fn: last, createEmpty: false)
+              |> sort(columns: ["_time"])
             '''
             
             result = self.query_api.query(query_feeding)
@@ -451,7 +453,7 @@ class HistoryQueryService:
             logger.error(f"查询投料记录失败: {e}", exc_info=True)
             return []
     
-    # 11. 查询当前批次投料累计历史数据（无聚合）
+    # 11. 查询当前批次投料累计历史数据（无聚合，返回 UTC 时间）
     def query_feeding_total_raw(
         self,
         batch_code: str,
@@ -461,13 +463,15 @@ class HistoryQueryService:
         """
         查询当前批次投料累计历史数据（无聚合）
         
+        注意：返回的时间是 UTC 时间（datetime 对象），调用方需要自行转换为北京时间
+        
         Args:
             batch_code: 批次号
             start_time: 开始时间（可选）
             end_time: 结束时间（可选）
             
         Returns:
-            投料累计数据列表 [{'time': datetime, 'value': float}, ...]
+            投料累计数据列表 [{'time': datetime (UTC), 'value': float}, ...]
         """
         try:
             time_filter = self._build_time_filter(batch_code, start_time, end_time)
@@ -490,7 +494,7 @@ class HistoryQueryService:
             
             for table in result:
                 for record in table.records:
-                    time = record.get_time()
+                    time = record.get_time()  # UTC 时间
                     value = record.get_value()
                     
                     feeding_data.append({

@@ -133,7 +133,7 @@ class PageHistoryCurve(QWidget):
         
         # 查询线程
         self.query_thread = None
-        
+    
         # 重试计数器
         self.load_retry_count = 0
         self.max_retry_count = 10  # 最大重试次数
@@ -839,7 +839,7 @@ class PageHistoryCurve(QWidget):
             from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
             
             wb = openpyxl.Workbook()
-            wb.remove(wb.active)  # 删除默认工作表
+            sheet_created = False
             
             # 为每相创建一个工作表
             for phase_id, data_type in data_type_map.items():
@@ -850,7 +850,12 @@ class PageHistoryCurve(QWidget):
                     continue
                 
                 # 创建工作表
-                ws = wb.create_sheet(title=data_type)
+                if sheet_created:
+                    ws = wb.create_sheet(title=data_type)
+                else:
+                    ws = wb.active
+                    ws.title = data_type
+                    sheet_created = True
                 
                 # 设置列宽
                 ws.column_dimensions['A'].width = 20
@@ -919,6 +924,11 @@ class PageHistoryCurve(QWidget):
                     cell.font = data_font
                     cell.alignment = data_alignment
                     cell.border = border
+            
+            # 检查是否创建了任何工作表
+            if not sheet_created:
+                QMessageBox.warning(self, "导出失败", "没有可导出的数据")
+                return
             
             # 保存文件
             wb.save(file_path)

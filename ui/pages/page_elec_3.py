@@ -13,6 +13,7 @@ from ui.widgets.realtime_data.chart_electrode import ChartElectrode, ElectrodeDa
 from ui.widgets.realtime_data.butterfly_vaue import WidgetValveGrid
 from ui.widgets.realtime_data import PanelFurnaceBg
 from ui.widgets.realtime_data.panel_furnace.dialog_batch_config import DialogBatchConfig
+from ui.widgets.realtime_data.hopper.card_hopper import CardHopper
 from backend.services.batch_service import get_batch_service
 from backend.bridge.data_cache import get_data_cache
 from loguru import logger
@@ -77,7 +78,7 @@ class PageElec3(QWidget):
         self.card_update_timer.timeout.connect(self.update_realtime_data)
         self.card_update_timer.start(500)  # 500ms = 0.5s（固定，不受轮询速度影响）
         
-        # 启动图表数据更新定时器（跟随轮询速度）
+        # 启动图表数据更新定时器（跟随 DB1 轮询速度）
         self.chart_update_timer = QTimer()
         self.chart_update_timer.timeout.connect(self.update_chart_data)
         
@@ -90,17 +91,25 @@ class PageElec3(QWidget):
         # 监听轮询速度变化
         self.polling_config.register_callback(self.on_polling_speed_changed)
         
+        logger.info(f"图表定时器已启动: {initial_interval}ms 刷新")
+        
         # 初始化批次状态（只在启动时更新一次）
         # 这里会自动同步后端状态，如果后端正在冶炼，UI 会自动恢复
         self.update_batch_status()
         
-        # 如果后端正在冶炼，切换 DB1 到高速模式
+        # 如果后端正在冶炼，切换 DB1 到高速模式，并初始化投料记录
         try:
             status = self.batch_service.get_status()
             if status['is_smelting']:
                 from backend.services.polling_loops_v2 import switch_db1_speed
                 switch_db1_speed(high_speed=True)
                 logger.info(f"检测到后端正在冶炼（批次: {status['batch_code']}），已切换 DB1 到高速模式")
+                
+                # 初始化投料记录
+                batch_code = status['batch_code']
+                if batch_code:
+                    logger.info(f"初始化批次 {batch_code} 的投料记录...")
+                    self.hopper_card.init_feeding_records(batch_code)
         except Exception as e:
             logger.error(f"检查后端状态失败: {e}", exc_info=True)
     
@@ -137,7 +146,7 @@ class PageElec3(QWidget):
         
         # 料仓模块 40%（和上方左侧对齐）
         self.create_hopper_panel()
-        bottom_layout.addWidget(self.hopper_panel, stretch=40)
+        bottom_layout.addWidget(self.hopper_card, stretch=40)
         
         # 炉盖/炉皮冷却水容器 60%（和上方右侧对齐）
         cooling_container = QWidget()
@@ -185,17 +194,17 @@ class PageElec3(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
         
-        # 上半部分：蝶阀网格组件 58%
+        # 上半部分：蝶阀网格组件 45%
         self.valve_grid = WidgetValveGrid()
         # 设置 sizePolicy 为 Expanding，让 stretch 生效
         from PyQt6.QtWidgets import QSizePolicy
         self.valve_grid.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        left_layout.addWidget(self.valve_grid, stretch=58)
+        left_layout.addWidget(self.valve_grid, stretch=45)
         
-        # 下半部分：弧流柱状图 42%
+        # 下半部分：弧流柱状图 55%
         self.create_electrode_chart()
         self.chart_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        left_layout.addWidget(self.chart_panel, stretch=42)
+        left_layout.addWidget(self.chart_panel, stretch=55)
         
         # 激活布局，让 stretch 生效
         left_layout.activate()
@@ -214,76 +223,9 @@ class PageElec3(QWidget):
     
     # 5. 创建料仓重量面板
     def create_hopper_panel(self):
-        from PyQt6.QtWidgets import QPushButton
-        from PyQt6.QtCore import Qt
-        
-        self.hopper_panel = PanelTech("料仓")
-        
-        # 添加"查看详情"按钮到标题栏右边
-        detail_btn = QPushButton("查看详情")
-        detail_btn.setObjectName("hopperDetailBtn")
-        detail_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        detail_btn.clicked.connect(self.show_hopper_detail)
-        
-        # 按钮样式
-        colors = self.theme_manager.get_colors()
-        detail_btn.setStyleSheet(f"""
-            QPushButton#hopperDetailBtn {{
-                background: {colors.BUTTON_PRIMARY_BG};
-                color: {colors.BUTTON_PRIMARY_TEXT};
-                border: 1px solid {colors.BORDER_GLOW};
-                border-radius: 4px;
-                padding: 6px 16px;
-                font-size: 14px;
-                font-weight: bold;
-            }}
-            QPushButton#hopperDetailBtn:hover {{
-                background: {colors.BUTTON_PRIMARY_HOVER};
-                border: 1px solid {colors.GLOW_PRIMARY};
-            }}
-            QPushButton#hopperDetailBtn:pressed {{
-                background: {colors.BG_MEDIUM};
-            }}
-        """)
-        
-        # 将按钮添加到标题栏右边
-        self.hopper_panel.add_header_action(detail_btn)
-        
-        # 使用 CardData 显示4行数据（初始值为 0）
-        items = [
-            DataItem(
-                label="投料状态",
-                value="静止",
-                unit="",
-                icon="📊"
-            ),
-            DataItem(
-                label="料仓上限",
-                value="5000",
-                unit="kg",
-                icon="⬆️"
-            ),
-            DataItem(
-                label="料仓重量",
-                value="0",
-                unit="kg",
-                icon="⚖️"
-            ),
-            DataItem(
-                label="投料累计",
-                value="0",
-                unit="kg",
-                icon="⬇️"
-            ),
-        ]
-        
-        self.hopper_card = CardData(items)
-        
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        layout.addWidget(self.hopper_card)
-        self.hopper_panel.set_content_layout(layout)
+        # 直接使用 CardHopper 组件，不使用 PanelTech 包裹
+        self.hopper_card = CardHopper()
+        self.hopper_card.set_limit_clicked.connect(self.show_hopper_detail)
     
     # 6. 创建炉皮冷却水面板
     def create_cooling_shell_panel(self):
@@ -548,52 +490,46 @@ class PageElec3(QWidget):
             # ========================================
             if sensor_data and 'hopper' in sensor_data:
                 hopper = sensor_data['hopper']
-                self.mock_data['hopper']['weight'] = hopper.get('weight', 0.0)
-                self.mock_data['hopper']['feeding_total'] = hopper.get('feeding_total', 0.0)
+                new_weight = hopper.get('weight', 0.0)
+                new_feeding_total = hopper.get('feeding_total', 0.0)
                 
-                # 获取料仓状态（四种状态）
-                hopper_state = hopper.get('state', 'idle')
+                # 数据验证：如果新数据都为0，且已有历史数据，则跳过本次更新
+                # 原因：PLC通信异常时会读取到0值，保持上一次的有效数据更合理
+                should_update_ui = True
                 
-                # 状态映射
-                state_map = {
-                    'idle': '静止',
-                    'feeding': '上料中',
-                    'waiting_feed': '排队等待上料',
-                    'discharging': '排料中'
-                }
-                state_text = state_map.get(hopper_state, '未知')
+                if new_weight == 0.0 and new_feeding_total == 0.0:
+                    # 如果已经有历史数据，跳过本次UI更新
+                    if self.mock_data['hopper']['weight'] > 0.0 or self.mock_data['hopper']['feeding_total'] > 0.0:
+                        should_update_ui = False  # 关键：不更新UI，避免闪烁
+                    else:
+                        # 如果是首次数据（都为0），则正常更新
+                        self.mock_data['hopper']['weight'] = new_weight
+                        self.mock_data['hopper']['feeding_total'] = new_feeding_total
+                else:
+                    # 数据有效，正常更新
+                    self.mock_data['hopper']['weight'] = new_weight
+                    self.mock_data['hopper']['feeding_total'] = new_feeding_total
                 
-                # 从 DB18 读取料仓上限值
-                upper_limit = self.data_cache.get_hopper_upper_limit()
-                self.mock_data['hopper']['upper_limit'] = upper_limit
-                
-                hopper_items = [
-                    DataItem(
-                        label="投料状态",
-                        value=state_text,
-                        unit="",
-                        icon="📊"
-                    ),
-                    DataItem(
-                        label="料仓上限",
-                        value=f"{int(upper_limit)}",
-                        unit="kg",
-                        icon="⬆️"
-                    ),
-                    DataItem(
-                        label="料仓重量",
-                        value=f"{int(self.mock_data['hopper']['weight'])}",
-                        unit="kg",
-                        icon="⚖️"
-                    ),
-                    DataItem(
-                        label="投料累计",
-                        value=f"{int(self.mock_data['hopper']['feeding_total'])}",
-                        unit="kg",
-                        icon="⬇️"
-                    ),
-                ]
-                self.hopper_card.update_items(hopper_items)
+                # 只有在需要更新UI时才调用 update_data()
+                if should_update_ui:
+                    # 获取料仓状态（四种状态）
+                    hopper_state = hopper.get('state', 'idle')
+                    
+                    # 从 DB18 读取料仓上限值
+                    upper_limit = self.data_cache.get_hopper_upper_limit()
+                    self.mock_data['hopper']['upper_limit'] = upper_limit
+                    
+                    # 获取当前批次号
+                    batch_code = self.mock_data.get('batch_no', '')
+                    
+                    # 使用验证后的数据更新卡片（传入批次号，用于检测投料累计变化）
+                    self.hopper_card.update_data(
+                        hopper_weight=self.mock_data['hopper']['weight'],
+                        feeding_total=self.mock_data['hopper']['feeding_total'],
+                        upper_limit=upper_limit,
+                        state=hopper_state,
+                        batch_code=batch_code
+                    )
             
             # ========================================
             # 6. 更新功率能耗（每 0.5s）
@@ -733,6 +669,10 @@ class PageElec3(QWidget):
                 
                 # 成功时不弹窗，直接更新批次状态
                 self.update_batch_status()
+                
+                # 初始化料仓投料记录（查询该批次的历史投料记录）
+                logger.info(f"初始化批次 {batch_code} 的投料记录...")
+                self.hopper_card.init_feeding_records(batch_code)
             else:
                 # 失败时显示自定义错误弹窗
                 logger.warning(f"冶炼开始失败: {result['message']}")
@@ -910,74 +850,28 @@ class PageElec3(QWidget):
         except Exception as e:
             logger.error(f"更新批次状态异常: {e}", exc_info=True)
     
-    # 16. 显示料仓详情弹窗
+    # 16. 显示料仓详情弹窗（设置料仓上限）
     def show_hopper_detail(self):
-        """显示料仓详情弹窗"""
+        """显示设置料仓上限弹窗"""
         try:
-            logger.info("开始导入 DialogHopperDetail...")
-            from ui.widgets.realtime_data.hopper import DialogHopperDetail
-            from datetime import timedelta
-            import random
+            from ui.widgets.realtime_data.hopper.dialog_set_limit import DialogSetLimit
             
-            logger.info("开始创建 DialogHopperDetail 实例...")
-            dialog = DialogHopperDetail(self)
-            logger.info("DialogHopperDetail 实例创建成功")
-            
-            # 获取当前料仓数据
+            # 获取当前料仓上限
             sensor_data = self.data_cache.get_sensor_data()
-            
             if sensor_data and 'hopper' in sensor_data:
-                hopper_data = sensor_data['hopper']
-                hopper_weight = hopper_data.get('weight', 0.0)
-                feeding_total = hopper_data.get('feeding_total', 0.0)
-                upper_limit = self.mock_data['hopper']['upper_limit']
-                hopper_state = hopper_data.get('state', 'idle')
+                upper_limit = sensor_data['hopper'].get('upper_limit', 5000.0)
             else:
-                # 使用模拟数据
-                hopper_weight = self.mock_data['hopper']['weight']
-                feeding_total = self.mock_data['hopper']['feeding_total']
                 upper_limit = self.mock_data['hopper']['upper_limit']
-                hopper_state = 'idle'
             
-            logger.info(f"准备更新弹窗数据: weight={hopper_weight}, total={feeding_total}, limit={upper_limit}, state={hopper_state}")
-            
-            # 更新弹窗数据
-            dialog.update_data(
-                feeding_total=feeding_total,
-                hopper_weight=hopper_weight,
-                upper_limit=upper_limit,
-                state=hopper_state
-            )
-            
-            logger.info("弹窗数据更新成功")
-            
-            # 生成模拟投料记录
-            feeding_records = []
-            base_time = datetime.now()
-            for i in range(20):
-                timestamp = base_time - timedelta(hours=i, minutes=random.randint(0, 59))
-                weight = random.uniform(100, 500)
-                feeding_records.append({
-                    'timestamp': timestamp,
-                    'weight': weight
-                })
-            feeding_records.sort(key=lambda x: x['timestamp'], reverse=True)
-            
-            # 设置投料记录
-            dialog.set_feeding_records(feeding_records)
-            
-            # 连接信号
-            dialog.upper_limit_set.connect(self.on_hopper_upper_limit_set)
-            
-            logger.info("准备显示料仓详情弹窗...")
+            # 创建弹窗
+            dialog = DialogSetLimit(upper_limit, self)
+            dialog.limit_set.connect(self.on_hopper_upper_limit_set)
             dialog.exec()
-            logger.info("料仓详情弹窗已关闭")
             
         except Exception as e:
-            logger.error(f"显示料仓详情弹窗失败: {e}", exc_info=True)
-            # 显示错误提示
+            logger.error(f"显示设置料仓上限弹窗失败: {e}", exc_info=True)
             from ui.widgets.common.dialog_message import show_error
-            show_error(self, "打开失败", f"无法打开料仓详情弹窗:\n{str(e)}")
+            show_error(self, "打开失败", f"无法打开设置料仓上限弹窗:\n{str(e)}")
     
     # 17. 料仓上限设置完成
     def on_hopper_upper_limit_set(self, limit: float):
@@ -990,33 +884,33 @@ class PageElec3(QWidget):
         # TODO: 将料仓上限保存到配置文件或数据库
         
         # 立即更新料仓面板显示
-        hopper_items = [
-            DataItem(
-                label="投料状态",
-                value="未投料",
-                unit="",
-                icon="📊"
-            ),
-            DataItem(
-                label="料仓上限",
-                value=f"{int(limit)}",
-                unit="kg",
-                icon="⬆️"
-            ),
-            DataItem(
-                label="料仓重量",
-                value=f"{int(self.mock_data['hopper']['weight'])}",
-                unit="kg",
-                icon="⚖️"
-            ),
-            DataItem(
-                label="投料累计",
-                value=f"{int(self.mock_data['hopper']['feeding_total'])}",
-                unit="kg",
-                icon="⬇️"
-            ),
-        ]
-        self.hopper_card.update_items(hopper_items)
+        self.update_hopper_card()
+    
+    # 17.1 更新料仓卡片
+    def update_hopper_card(self):
+        """更新料仓卡片 (从缓存读取实时数据)"""
+        try:
+            # 从缓存读取传感器数据
+            sensor_data = self.data_cache.get_sensor_data()
+            
+            if sensor_data and 'hopper' in sensor_data:
+                hopper_data = sensor_data['hopper']
+                hopper_weight = hopper_data.get('weight', 0.0)
+                feeding_total = hopper_data.get('feeding_total', 0.0)
+                upper_limit = hopper_data.get('upper_limit', 5000.0)
+                hopper_state = hopper_data.get('state', 'idle')
+            else:
+                # 使用模拟数据
+                hopper_weight = self.mock_data['hopper']['weight']
+                feeding_total = self.mock_data['hopper']['feeding_total']
+                upper_limit = self.mock_data['hopper']['upper_limit']
+                hopper_state = 'idle'
+            
+            # 更新卡片
+            self.hopper_card.update_data(hopper_weight, feeding_total, upper_limit, hopper_state)
+            
+        except Exception as e:
+            logger.error(f"更新料仓卡片失败: {e}", exc_info=True)
     
     # 18. 页面隐藏时停止定时器（防止定时器泄漏）
     def hideEvent(self, event):

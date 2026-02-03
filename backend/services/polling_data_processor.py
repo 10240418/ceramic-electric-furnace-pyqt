@@ -1040,6 +1040,7 @@ def process_hopper_plc_data(
     4. 解析 I区 (I4.6 供料反馈信号)
     5. 判断料仓状态 (正在上料/排队等待上料/排料中/静止)
     6. 当排料标志为 True 时，生成投料记录
+    7. 数据验证：过滤掉料仓重量和投料累计为0的异常数据
     
     Args:
         db18_data: DB18 原始字节数据
@@ -1060,6 +1061,18 @@ def process_hopper_plc_data(
         current_weight = db18_parsed.get('current_weight', 0.0)
         discharge_weight = db18_parsed.get('discharge_weight', 0.0)
         upper_limit = db18_parsed.get('upper_limit', 4900.0)
+        
+        # 数据验证：如果料仓重量为0且不是排料状态，跳过本次数据
+        # 原因：PLC通信异常时会读取到0值，这是无效数据
+        from backend.services.hopper.accumulator import get_feeding_plc_accumulator
+        accumulator = get_feeding_plc_accumulator()
+        feeding_total = accumulator.get_feeding_total()
+        
+        # 如果料仓重量和投料累计都为0，且已经有历史数据，则跳过本次更新
+        if current_weight == 0.0 and feeding_total > 0.0:
+            from loguru import logger
+            logger.warning(f"检测到异常数据：料仓重量为0 (投料累计: {feeding_total:.1f}kg)，跳过本次更新")
+            return
         
         # 2. 解析 DB19 数据
         db19_parsed = _db19_parser.parse(db19_data)
@@ -1157,27 +1170,34 @@ def process_hopper_plc_data(
             accumulator = get_feeding_plc_accumulator()
             feeding_total = accumulator.get_feeding_total()
             
-            # 构建料仓数据
-            hopper_data = {
-                'weight': current_weight,
-                'feeding_total': feeding_total,
-                'upper_limit': upper_limit,
-                'state': hopper_state,
-                'is_discharging': is_discharging,
-                'is_requesting': is_requesting,
-                'is_feeding_back': is_feeding_back,
-                'timestamp': time.time()
-            }
-            
-            # 更新传感器数据中的料仓部分
-            sensor_data = data_cache.get_sensor_data()
-            if sensor_data:
-                sensor_data['hopper'] = hopper_data
-                sensor_data['timestamp'] = time.time()
-                data_cache.set_sensor_data(sensor_data)
-                data_bridge.emit_sensor_data(sensor_data)
+            # 数据验证：只有当料仓重量和投料累计都有效时才更新缓存
+            # 有效条件：料仓重量>0 或 投料累计>0
+            if current_weight > 0.0 or feeding_total > 0.0:
+                # 构建料仓数据
+                hopper_data = {
+                    'weight': current_weight,
+                    'feeding_total': feeding_total,
+                    'upper_limit': upper_limit,
+                    'state': hopper_state,
+                    'is_discharging': is_discharging,
+                    'is_requesting': is_requesting,
+                    'is_feeding_back': is_feeding_back,
+                    'timestamp': time.time()
+                }
+                
+                # 更新传感器数据中的料仓部分
+                sensor_data = data_cache.get_sensor_data()
+                if sensor_data:
+                    sensor_data['hopper'] = hopper_data
+                    sensor_data['timestamp'] = time.time()
+                    data_cache.set_sensor_data(sensor_data)
+                    data_bridge.emit_sensor_data(sensor_data)
+            else:
+                from loguru import logger
+                logger.debug(f"料仓数据无效 (重量={current_weight:.1f}kg, 累计={feeding_total:.1f}kg)，跳过缓存更新")
         
         except Exception as bridge_err:
+            from loguru import logger
             logger.error(f"写入 DataCache/DataBridge 失败: {bridge_err}")
         
     except Exception as e:
@@ -1193,10 +1213,12 @@ def _determine_hopper_state(
 ) -> str:
     """判断料仓状态
     
+    优先级: 排料 > 上料中 > 排队等待 > 静止
+    
     状态逻辑:
-    1. Q3.7=True -> discharging (排料中)
-    2. Q4.0=True 且 I4.6=True -> feeding (上料中)
-    3. Q4.0=True 且 I4.6=False -> waiting_feed (排队等待上料)
+    1. Q3.7=1 -> discharging (排料中)
+    2. Q4.0=1 且 I4.6=1 -> feeding (上料中)
+    3. Q4.0=1 且 I4.6=0 -> waiting_feed (排队等待上料)
     4. 全部 False -> idle (静止)
     
     Args:

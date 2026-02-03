@@ -1,11 +1,25 @@
 """
 蝶阀组件 - 包含单个蝶阀指示器和2x2网格布局（仪表盘样式）
 """
+from dataclasses import dataclass
+
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout
 from PyQt6.QtCore import Qt, QRectF, QPointF
 from PyQt6.QtGui import QPainter, QColor, QLinearGradient, QPen, QFont, QConicalGradient, QPainterPath
 import math
 from ui.styles.themes import ThemeManager
+
+
+@dataclass
+class ValveLayoutProfile:
+    left_spacing: int = -14
+    gauge_weight: int = 92
+    bottom_ratio: int = 8
+    bottom_background: str | None = "#B0B0B0"
+    gauge_center_multiplier: float = 0.82
+    gauge_center_offset: float = 8.0
+    radius_multiplier: float = 0.45
+    radius_padding: float = 4.0
 
 
 class IndicatorValve(QFrame):
@@ -39,22 +53,25 @@ class IndicatorValve(QFrame):
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(5)
+        left_layout.setSpacing(-18)  # 从-14改为-18，让仪表盘和灰色区域更紧密
         
-        # 上部分 60%：仪表盘
+        # 上部分 95%：仪表盘（最大化显示区域）
         self.gauge_widget = GaugeWidget(self)
-        left_layout.addWidget(self.gauge_widget, 60)
+        left_layout.addWidget(self.gauge_widget, 95)
         
-        # 下部分 40%：编号 + 百分比
+        # 下部分 5%：编号 + 百分比（进一步压缩）
         bottom_widget = QWidget()
         bottom_layout = QHBoxLayout(bottom_widget)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
-        bottom_layout.setSpacing(8)
+        bottom_layout.setSpacing(0)
+        from PyQt6.QtWidgets import QSizePolicy
+        bottom_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        bottom_widget.setStyleSheet("background: transparent;")
         
-        # 编号 (20%) - 减小字体
+        # 编号 (20%) - 进一步减小字体
         self.num_label = QLabel(f"{self.valve_id}#")
         self.num_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        font = QFont("Microsoft YaHei", 18)  # 从24减小到18
+        font = QFont("Microsoft YaHei", 14)  # 从18减小到14
         font.setBold(True)
         self.num_label.setFont(font)
         bottom_layout.addWidget(self.num_label, 20)
@@ -80,7 +97,7 @@ class IndicatorValve(QFrame):
         # 初始化时就设置富文本样式
         self.update_percent_display()
         
-        left_layout.addWidget(bottom_widget, 40)
+        left_layout.addWidget(bottom_widget, 5)
         
         main_layout.addWidget(left_widget, 78)  # 从76%改为78%
         
@@ -113,12 +130,12 @@ class IndicatorValve(QFrame):
     
     # 4. 更新百分比显示
     def update_percent_display(self):
-        """更新百分比显示（使用富文本，数值36px，百分号24px）"""
+        """更新百分比显示（使用富文本，数值28px，百分号18px）"""
         colors = self.theme_manager.get_colors()
         value = int(self.open_percentage)
         self.percent_label.setText(
-            f'<span style="font-size: 36px; font-weight: bold; font-family: Roboto Mono; color: {colors.TEXT_PRIMARY};">{value}</span>'
-            f'<span style="font-size: 24px; font-weight: normal; font-family: Roboto Mono; color: {colors.TEXT_PRIMARY};">%</span>'
+            f'<span style="font-size: 28px; font-weight: bold; font-family: Roboto Mono; color: {colors.TEXT_PRIMARY};">{value}</span>'
+            f'<span style="font-size: 18px; font-weight: normal; font-family: Roboto Mono; color: {colors.TEXT_PRIMARY};">%</span>'
         )
     
     # 5. 设置状态
@@ -241,12 +258,12 @@ class GaugeWidget(QWidget):
         
         colors = self.theme_manager.get_colors()
         
-        # 计算仪表盘中心和半径
+        # 计算仪表盘中心和半径（增加4px空间，让仪表盘略大）
         width = self.width()
         height = self.height()
         center_x = width / 2
-        center_y = height * 0.85  # 中心点在下方85%处，让上半圆弧更明显
-        radius = min(width, height * 1.2) * 0.45
+        center_y = height * 0.82 + 8  # 继续下移中心，释放上方空间
+        radius = max(0.0, min(width, height) * 0.76 - 4)  # 简化计算，保持留白且半径略小
         
         # 绘制背景弧（180度扇形）
         self.draw_background_arc(painter, center_x, center_y, radius, colors)
@@ -299,9 +316,15 @@ class GaugeWidget(QWidget):
             painter.setPen(QPen(QColor(colors.TEXT_PRIMARY), 3))
             painter.drawLine(QPointF(mark_start_x, mark_start_y), QPointF(mark_end_x, mark_end_y))
             
-            # 标签位置（在刻度线外侧）
-            label_x = cx + (radius + 25) * math.cos(angle_rad)
-            label_y = cy - (radius + 25) * math.sin(angle_rad)
+            # 标签位置（向外延伸，从15px改为12px，让标签更靠近弧线）
+            label_x = cx + (radius + 12) * math.cos(angle_rad)
+            label_y = cy - (radius + 12) * math.sin(angle_rad)
+
+            # 单独调整全开和全关的位置
+            if label == "全开":
+                label_x -= 6  # 向左移动6px
+            elif label == "全关":
+                label_x += 6  # 向右移动6px
             
             # 绘制标签
             painter.setPen(QColor(colors.TEXT_PRIMARY))

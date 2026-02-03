@@ -356,7 +356,6 @@ class DialogHopperDetail(QDialog):
                     # 将 UTC 时间转换为北京时间（UTC+8）
                     utc_time = datetime.fromisoformat(record['time'])
                     if utc_time.tzinfo is None:
-                        from datetime import timezone
                         utc_time = utc_time.replace(tzinfo=timezone.utc)
                     
                     beijing_time = utc_time.astimezone(timezone(timedelta(hours=8)))

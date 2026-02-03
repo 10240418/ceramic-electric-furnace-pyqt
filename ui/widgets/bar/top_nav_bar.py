@@ -94,13 +94,13 @@ class TopNavBar(QFrame):
         layout.addStretch()
         
         # 时钟显示
-        self.clock_label = self.create_clock_label()
-        layout.addWidget(self.clock_label)
+        self.clock_widget = self.create_clock_label()
+        layout.addWidget(self.clock_widget)
         
         # 立即更新一次时钟
         self.update_clock()
         
-        layout.addSpacing(4)  # 时钟和状态指示器之间：4px
+        layout.addSpacing(-8)  # 时钟和PLC状态之间减小12px (原来4px，现在-8px，总共减小12px)
         
         # 状态指示器 (PLC, 服务, 数据库)
         self.status_plc = self.create_status_indicator("PLC")
@@ -161,11 +161,26 @@ class TopNavBar(QFrame):
     
     # 5. 创建时钟标签
     def create_clock_label(self):
-        label = QLabel()
-        label.setObjectName("clock_label")
-        label.setFont(QFont("Consolas", 18, QFont.Weight.Bold))
-        label.setText("00:00:00")  # 初始值
-        return label
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)  # 日期和时间之间间距4px
+        
+        # 日期标签 (月-日)
+        self.date_label = QLabel()
+        self.date_label.setObjectName("date_label")
+        self.date_label.setFont(QFont("Consolas", 18, QFont.Weight.Bold))
+        self.date_label.setText("01-01")  # 初始值
+        layout.addWidget(self.date_label)
+        
+        # 时间标签 (时:分:秒)
+        self.time_label = QLabel()
+        self.time_label.setObjectName("time_label")
+        self.time_label.setFont(QFont("Consolas", 18, QFont.Weight.Bold))
+        self.time_label.setText("00:00:00")  # 初始值
+        layout.addWidget(self.time_label)
+        
+        return widget
     
     # 6. 创建状态指示器
     def create_status_indicator(self, name: str):
@@ -271,8 +286,10 @@ class TopNavBar(QFrame):
     # 9. 更新时钟显示
     def update_clock(self):
         now = datetime.now()
-        time_str = now.strftime("%H:%M:%S")
-        self.clock_label.setText(time_str)
+        date_str = now.strftime("%m-%d")  # 月-日
+        time_str = now.strftime("%H:%M:%S")  # 时:分:秒
+        self.date_label.setText(date_str)
+        self.time_label.setText(time_str)
     
     # 10. 更新状态显示
     def update_status(self):
@@ -381,12 +398,20 @@ class TopNavBar(QFrame):
                 color: {tm.border_glow()};
             }}
             
-            /* 时钟 */
-            QLabel#clock_label {{
+            /* 时钟 - 日期 */
+            QLabel#date_label {{
                 color: {tm.border_glow()};
                 background: transparent;
                 border: none;
-                padding: 6px 12px;
+                padding: 6px 8px;
+            }}
+            
+            /* 时钟 - 时间 */
+            QLabel#time_label {{
+                color: {tm.border_glow()};
+                background: transparent;
+                border: none;
+                padding: 6px 8px;
             }}
             
             /* 窗口控制按钮 */

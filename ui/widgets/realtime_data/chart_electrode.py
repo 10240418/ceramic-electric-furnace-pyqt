@@ -2,14 +2,14 @@
 电极电流柱状图组件 - 显示三个电极的设定值和实际值对比
 """
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
-from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtCore import Qt, QRectF, QTimer
 from PyQt6.QtGui import QPainter, QColor, QLinearGradient, QPen, QFont
 from ui.styles.themes import ThemeManager
 
 
 class ElectrodeData:
     """电极数据模型"""
-    
+
     def __init__(self, name: str, set_value: float, actual_value: float):
         self.name = name
         self.set_value = set_value
@@ -18,7 +18,7 @@ class ElectrodeData:
 
 class ChartElectrode(QWidget):
     """电极电流柱状图组件"""
-    
+
     # 1. 初始化组件
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -29,105 +29,151 @@ class ChartElectrode(QWidget):
             ElectrodeData("3#电极", 0, 0),
         ]
         self.deadzone_percent = 15.0  # 死区百分比，默认15%
-        
+
         # 刷新间隔（毫秒）- 跟随轮询速度
         self._refresh_interval_ms = 200  # 默认 200ms (0.2s)
-        
+
+        # 节流优化：缓存最新数据，定时更新UI
+        self._pending_update = False
+        self._pending_electrodes = None
+        self._pending_deadzone = None
+        self._throttle_timer = QTimer()
+        self._throttle_timer.setSingleShot(True)
+        self._throttle_timer.timeout.connect(self._do_pending_update)
+
         self.init_ui()
-        
+
         # 监听主题变化
         self.theme_manager.theme_changed.connect(self.on_theme_changed)
-        
+
         # 监听轮询速度变化
         from backend.config.polling_config import get_polling_config
         self.polling_config = get_polling_config()
         self.polling_config.register_callback(self.on_polling_speed_changed)
-    
+
     # 2. 初始化 UI
     def init_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 0, 8, 2)  # 左右8px，上0px（减小顶部距离），下2px
-        main_layout.setSpacing(2)  # 紧凑间距2px
-        
-        # 顶部：标题和图例
-        top_layout = QHBoxLayout()
-        top_layout.setContentsMargins(15, 0, 0, 0)  # 标题左边距15px（从30px减小到15px，对齐Y轴）
-        
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(8, 0, 0, 0)
+        main_layout.setSpacing(4)
+
+        # 左侧：图表区域（80%）
+        self.chart_widget = ChartWidget(self)
+        main_layout.addWidget(self.chart_widget, stretch=80)
+
+        # 右侧：数据列表区域（20%）
+        self.data_panel = self.create_data_panel()
+        main_layout.addWidget(self.data_panel, stretch=20)
+
+        self.apply_styles()
+
+    # 3. 创建数据面板
+    def create_data_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setObjectName("dataPanel")
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # 上部分：弧流+死区（26%高度）
+        top_widget = QWidget()
+        top_layout = QVBoxLayout(top_widget)
+        top_layout.setContentsMargins(8, 8, 8, 8)
+        top_layout.setSpacing(4)
+
         # 标题：弧流(KA)
         title_label = QLabel("弧流(KA)")
-        title_label.setObjectName("chartTitle")
-        font = QFont("Microsoft YaHei", 14)  # 字号从18减小到14
+        title_label.setObjectName("dataTitle")
+        font = QFont("Microsoft YaHei", 13)
         font.setBold(True)
         title_label.setFont(font)
-        title_label.setContentsMargins(0, 0, 0, 0)
         top_layout.addWidget(title_label)
-        
+
+        # 死区
+        self.deadzone_label = QLabel(f"死区: {int(self.deadzone_percent)}%")
+        self.deadzone_label.setObjectName("deadzoneLabel")
+        font = QFont("Microsoft YaHei", 13)
+        self.deadzone_label.setFont(font)
+        top_layout.addWidget(self.deadzone_label)
+
         top_layout.addStretch()
-        
-        # 图例
-        self.legend_widget = self.create_legend()
-        top_layout.addWidget(self.legend_widget)
-        
-        main_layout.addLayout(top_layout)
-        
-        # 图表主体
-        self.chart_widget = ChartWidget(self)
-        main_layout.addWidget(self.chart_widget, 1)
-        
-        self.apply_styles()
-    
-    # 3. 创建图例
-    def create_legend(self) -> QWidget:
-        legend = QFrame()
-        legend.setObjectName("legend")
-        
-        layout = QHBoxLayout(legend)
-        layout.setContentsMargins(4, 2, 4, 2)  # 减小边距
-        layout.setSpacing(10)  # 减小间距
-        
-        # 死区显示
-        deadzone_label = QLabel(f"死区: {int(self.deadzone_percent)}%")
-        deadzone_label.setObjectName("deadzoneLabel")
-        font = QFont("Microsoft YaHei", 14)  # 字号从12改为14
-        deadzone_label.setFont(font)
-        layout.addWidget(deadzone_label)
-        
-        # 设定值图例
-        set_item = self.create_legend_item("设定值:", "set")
-        layout.addWidget(set_item)
-        
-        # 实际值图例
-        actual_item = self.create_legend_item("实际值:", "actual")
-        layout.addWidget(actual_item)
-        
-        return legend
-    
-    # 4. 创建图例项
-    def create_legend_item(self, text: str, item_type: str) -> QWidget:
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)  # 减小间距
-        
-        # 文字
-        label = QLabel(text)
-        label.setObjectName(f"legendLabel_{item_type}")
-        font = QFont("Microsoft YaHei", 14)  # 字号从12改为14
-        label.setFont(font)
-        layout.addWidget(label)
-        
-        # 颜色块
-        color_box = QFrame()
-        color_box.setFixedSize(14, 10)  # 减小尺寸
-        color_box.setObjectName(f"legendBox_{item_type}")
-        layout.addWidget(color_box)
-        
-        return widget
-    
-    # 5. 更新数据
+        layout.addWidget(top_widget, stretch=26)
+
+        # 分隔线
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        separator.setObjectName("separator")
+        layout.addWidget(separator)
+
+        # 中部分：设定值（37%高度）
+        set_widget = QWidget()
+        set_layout = QVBoxLayout(set_widget)
+        set_layout.setContentsMargins(8, 8, 8, 8)
+        set_layout.setSpacing(4)
+
+        # 设定值标题
+        set_title = QLabel("设定值")
+        set_title.setObjectName("sectionTitle")
+        font = QFont("Microsoft YaHei", 13)
+        font.setBold(True)
+        set_title.setFont(font)
+        set_layout.addWidget(set_title)
+
+        # 设定值数据
+        self.set_labels = []
+        for i in range(3):
+            label = QLabel(f"{i+1}#: 0")
+            label.setObjectName(f"setLabel_{i}")
+            font = QFont("Roboto Mono", 13)
+            label.setFont(font)
+            set_layout.addWidget(label)
+            self.set_labels.append(label)
+
+        set_layout.addStretch()
+        layout.addWidget(set_widget, stretch=37)
+
+        # 分隔线
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.Shape.HLine)
+        separator2.setFrameShadow(QFrame.Shadow.Sunken)
+        separator2.setObjectName("separator")
+        layout.addWidget(separator2)
+
+        # 下部分：实际值（37%高度）
+        actual_widget = QWidget()
+        actual_layout = QVBoxLayout(actual_widget)
+        actual_layout.setContentsMargins(8, 8, 8, 8)
+        actual_layout.setSpacing(4)
+
+        # 实际值标题
+        actual_title = QLabel("实际值")
+        actual_title.setObjectName("sectionTitle")
+        font = QFont("Microsoft YaHei", 13)
+        font.setBold(True)
+        actual_title.setFont(font)
+        actual_layout.addWidget(actual_title)
+
+        # 实际值数据
+        self.actual_labels = []
+        for i in range(3):
+            label = QLabel(f"{i+1}#: 0")
+            label.setObjectName(f"actualLabel_{i}")
+            font = QFont("Roboto Mono", 13)
+            label.setFont(font)
+            actual_layout.addWidget(label)
+            self.actual_labels.append(label)
+
+        actual_layout.addStretch()
+        layout.addWidget(actual_widget, stretch=37)
+
+        return panel
+
+    # 4. 更新数据（优化性能）
     def update_data(self, electrodes: list, deadzone_percent: float = 15.0):
-        """更新电极数据
-        
+        """更新电极数据（节流优化，避免频繁重绘）
+
         Args:
             electrodes: 电极数据列表，每个元素包含 name, set_value, actual_value
                        例如: [
@@ -137,15 +183,66 @@ class ChartElectrode(QWidget):
                        ]
             deadzone_percent: 死区百分比（默认15%）
         """
+        # 检查数据是否变化，避免无效重绘
+        data_changed = False
+
+        # 检查电极数据是否变化
+        if len(self.electrodes) != len(electrodes):
+            data_changed = True
+        else:
+            for i, (old, new) in enumerate(zip(self.electrodes, electrodes)):
+                if (old.set_value != new.set_value or
+                    old.actual_value != new.actual_value):
+                    data_changed = True
+                    break
+
+        # 检查死区是否变化
+        if abs(self.deadzone_percent - deadzone_percent) > 0.01:
+            data_changed = True
+
+        # 只有数据变化时才更新
+        if data_changed:
+            # 节流优化：缓存待更新数据，延迟执行
+            self._pending_electrodes = electrodes
+            self._pending_deadzone = deadzone_percent
+
+            if not self._pending_update:
+                self._pending_update = True
+                # 延迟 50ms 执行更新，避免频繁重绘
+                self._throttle_timer.start(50)
+
+    # 4.1 执行待处理的更新
+    def _do_pending_update(self):
+        """执行待处理的更新（节流优化）"""
+        if self._pending_electrodes is None:
+            return
+
+        electrodes = self._pending_electrodes
+        deadzone_percent = self._pending_deadzone
+
         self.electrodes = electrodes
         self.deadzone_percent = deadzone_percent
-        
+
         # 更新死区显示
-        deadzone_label = self.legend_widget.findChild(QLabel, "deadzoneLabel")
-        if deadzone_label:
-            deadzone_label.setText(f"死区: {int(deadzone_percent)}%")
-        
+        self.deadzone_label.setText(f"死区: {int(deadzone_percent)}%")
+
+        # 更新设定值标签
+        for i, electrode in enumerate(electrodes):
+            if i < len(self.set_labels):
+                self.set_labels[i].setText(f"{i+1}#: {int(electrode.set_value)}")
+
+        # 更新实际值标签
+        for i, electrode in enumerate(electrodes):
+            if i < len(self.actual_labels):
+                self.actual_labels[i].setText(f"{i+1}#: {int(electrode.actual_value)}")
+
+        # 触发重绘
         self.chart_widget.update()
+
+        # 清除待更新标记
+        self._pending_update = False
+        self._pending_electrodes = None
+        self._pending_deadzone = None
     
     # 6. 从字典更新数据（便捷方法）
     def update_from_dict(self, data: dict):
@@ -171,94 +268,99 @@ class ChartElectrode(QWidget):
         ]
         
         self.update_data(electrodes, deadzone)
-    
-    # 6. 应用样式
+
+    # 5. 应用样式
     def apply_styles(self):
         colors = self.theme_manager.get_colors()
-        
-        # 标题样式
-        title_label = self.findChild(QLabel, "chartTitle")
-        if title_label:
-            title_label.setStyleSheet(f"""
-                QLabel {{
-                    color: {colors.GLOW_PRIMARY};
-                    background: transparent;
-                    border: none;
-                }}
-            """)
-        
-        # 图例容器
-        self.legend_widget.setStyleSheet(f"""
-            QFrame#legend {{
-                background: transparent;
-                border: none;
+
+        # 数据面板样式（上下左右都有border）
+        self.data_panel.setStyleSheet(f"""
+            QFrame#dataPanel {{
+                background: {colors.CARD_BG};
+                border: 1px solid {colors.BORDER_DARK};
+                border-radius: 0px;
             }}
         """)
-        
-        # 死区标签
-        deadzone_label = self.legend_widget.findChild(QLabel, "deadzoneLabel")
-        if deadzone_label:
-            deadzone_label.setStyleSheet(f"""
+
+        # 标题样式（弧流文字颜色和死区一样）
+        title_label = self.data_panel.findChild(QLabel, "dataTitle")
+        if title_label:
+            title_label.setStyleSheet(f"""
                 QLabel {{
                     color: {colors.TEXT_PRIMARY};
                     background: transparent;
                     border: none;
+                    padding: 4px 0px;
                 }}
             """)
-        
-        # 设定值图例（适配主题配色）
+
+        # 死区标签
+        self.deadzone_label.setStyleSheet(f"""
+            QLabel {{
+                color: {colors.TEXT_PRIMARY};
+                background: transparent;
+                border: none;
+                padding: 2px 0px;
+            }}
+        """)
+
+        # 分隔线（完整连接左右边距）
+        separators = self.data_panel.findChildren(QFrame, "separator")
+        for sep in separators:
+            sep.setStyleSheet(f"""
+                QFrame {{
+                    background: {colors.BORDER_DARK};
+                    max-height: 1px;
+                    margin-left: 0px;
+                    margin-right: 0px;
+                }}
+            """)
+
+        # 章节标题（设定值/实际值）
+        section_titles = self.data_panel.findChildren(QLabel, "sectionTitle")
+        for title in section_titles:
+            title.setStyleSheet(f"""
+                QLabel {{
+                    color: {colors.TEXT_PRIMARY};
+                    background: transparent;
+                    border: none;
+                    padding: 4px 0px;
+                }}
+            """)
+
+        # 设定值标签颜色
         if self.theme_manager.is_dark_mode():
             set_color = "#00D4FF"  # 深色主题：青蓝色
         else:
             set_color = "#007663"  # 浅色主题：深绿色
-            
-        set_box = self.legend_widget.findChild(QFrame, "legendBox_set")
-        if set_box:
-            set_box.setStyleSheet(f"""
-                QFrame {{
-                    background: {set_color};
-                    border: 1px solid {set_color};
-                    border-radius: 2px;
-                }}
-            """)
-        
-        set_label = self.legend_widget.findChild(QLabel, "legendLabel_set")
-        if set_label:
-            set_label.setStyleSheet(f"""
+
+        for label in self.set_labels:
+            label.setStyleSheet(f"""
                 QLabel {{
-                    color: {colors.TEXT_PRIMARY};
+                    color: {set_color};
                     background: transparent;
                     border: none;
+                    padding: 2px 0px;
                 }}
             """)
-        
-        # 实际值图例（适配主题配色）
+
+        # 实际值标签颜色
         if self.theme_manager.is_dark_mode():
             actual_color = "#FFB84D"  # 深色主题：橙黄色
         else:
             actual_color = "#D4A017"  # 浅色主题：金黄色
-            
-        actual_box = self.legend_widget.findChild(QFrame, "legendBox_actual")
-        if actual_box:
-            actual_box.setStyleSheet(f"""
-                QFrame {{
-                    background: {actual_color};
-                    border: 1px solid {actual_color};
-                    border-radius: 2px;
-                }}
-            """)
-        
-        actual_label = self.legend_widget.findChild(QLabel, "legendLabel_actual")
-        if actual_label:
-            actual_label.setStyleSheet(f"""
+
+        for label in self.actual_labels:
+            label.setStyleSheet(f"""
                 QLabel {{
-                    color: {colors.TEXT_PRIMARY};
+                    color: {actual_color};
                     background: transparent;
                     border: none;
+                    padding: 2px 0px;
                 }}
             """)
-    
-    # 7. 主题变化时重新应用样式
+
+    # 6. 主题变化时重新应用样式
     def on_theme_changed(self):
         self.apply_styles()
         self.chart_widget.update()
@@ -297,6 +399,10 @@ class ChartWidget(QWidget):
         self.theme_manager = ThemeManager.instance()
         # 移除最小高度限制，让 stretch 参数生效
         # self.setMinimumHeight(250)
+        
+        # 性能优化：启用双缓冲，减少闪烁
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
     
     # 2. 绘制图表
     def paintEvent(self, event):
@@ -309,14 +415,14 @@ class ChartWidget(QWidget):
         min_value = 0
         max_value = 8000  # 8KA = 8000A
         
-        # 绘制区域（紧凑布局，Y轴12px，X轴标签高度18px）
-        y_axis_width = 12  # Y轴刻度宽度（从25px减小到12px）
-        x_axis_height = 18  # X轴高度（改为18px）
+        # 绘制区域（紧凑布局，Y轴14px，X轴标签高度22px）
+        y_axis_width = 14  # Y轴刻度宽度（加大4px）
+        x_axis_height = 22  # X轴高度（加大6px）
         chart_rect = QRectF(
-            y_axis_width,  # 左边距12px（为Y轴刻度留空间）
-            5,  # 顶部边距5px（紧凑）
-            self.width() - y_axis_width - 10,  # 右边距10px（紧凑）
-            self.height() - x_axis_height - 5  # 底部留18px给X轴标签
+            y_axis_width + 4,  # 左边距18px（为Y轴刻度留空间+4px）
+            8,  # 顶部边距8px（4px+4px）
+            self.width() - y_axis_width - 8 - 4,  # 右边距8px（紧凑）
+            self.height() - x_axis_height - 8  # 底部留22px给X轴标签
         )
         
         # 绘制Y轴和X轴
@@ -377,32 +483,33 @@ class ChartWidget(QWidget):
     # 4. 绘制Y轴刻度（1-8 KA）
     def draw_y_axis(self, painter: QPainter, min_value: float, max_value: float, width: int, chart_rect: QRectF, colors):
         painter.setPen(QColor(colors.TEXT_PRIMARY))
-        font = QFont("Microsoft YaHei", 11)  # 字号从12减小到11
+        font = QFont("Microsoft YaHei", 10)  # 紧凑字号10
+        font.setBold(True)  # 加粗
         painter.setFont(font)
-        
+
         # 9个刻度：0, 1, 2, 3, 4, 5, 6, 7, 8
         for i in range(9):
             value = i  # KA
             value_a = i * 1000  # 转换为A
             ratio = value_a / max_value
             y = chart_rect.bottom() - chart_rect.height() * ratio
-            
+
             # 绘制刻度线
             painter.setPen(QPen(QColor(colors.BORDER_DARK), 1))
             painter.drawLine(
-                int(chart_rect.left() - 5), 
-                int(y), 
-                int(chart_rect.left()), 
+                int(chart_rect.left() - 4),
+                int(y),
+                int(chart_rect.left()),
                 int(y)
             )
-            
+
             # 绘制刻度值（在Y轴左侧）
             painter.setPen(QColor(colors.TEXT_PRIMARY))
             text = f"{value}"
-            # 刻度值绘制区域：从左边缘到Y轴左侧（Y轴左移后空间更小）
+            # 刻度值绘制区域：从左边缘到Y轴左侧（紧凑）
             painter.drawText(
-                QRectF(0, y - 10, chart_rect.left() - 5, 20), 
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, 
+                QRectF(0, y - 8, chart_rect.left() - 4, 16),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                 text
             )
     
@@ -455,15 +562,15 @@ class ChartWidget(QWidget):
         electrode_count = len(self.chart.electrodes)
         if electrode_count == 0:
             return
-        
+
         value_range = max_value - min_value
         if value_range <= 0:
             return
-        
+
         # 计算每个电极组的宽度
         group_width = chart_rect.width() / electrode_count
-        bar_width = 33  # 单个柱子宽度（增加3px）
-        spacing = 16  # 柱子间距（增加8px）
+        bar_width = 28  # 单个柱子宽度（紧凑）
+        spacing = 18  # 柱子间距（加大6px）
         
         # 配色方案（适配主题）
         if self.theme_manager.is_dark_mode():
@@ -546,22 +653,22 @@ class ChartWidget(QWidget):
     # 8. 绘制X轴标签
     def draw_x_labels(self, painter: QPainter, chart_rect: QRectF, colors):
         painter.setPen(QColor(colors.TEXT_PRIMARY))
-        font = QFont("Microsoft YaHei", 11)  # 紧凑字号11
+        font = QFont("Microsoft YaHei", 12)  # 字号加大到12
         font.setBold(True)
         painter.setFont(font)
-        
+
         electrode_count = len(self.chart.electrodes)
         if electrode_count == 0:
             return
-        
+
         group_width = chart_rect.width() / electrode_count
-        
+
         # X轴标签文字：1#电极、2#电极、3#电极
         labels = ["1#电极", "2#电极", "3#电极"]
-        
+
         for i in range(min(electrode_count, len(labels))):
             group_center_x = chart_rect.left() + group_width * (i + 0.5)
-            # X轴标签位置：紧贴X轴下方，高度18px
-            label_rect = QRectF(group_center_x - 60, chart_rect.bottom() + 2, 120, 18)
+            # X轴标签位置：紧贴X轴下方，高度22px
+            label_rect = QRectF(group_center_x - 50, chart_rect.bottom() + 2, 100, 22)
             painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter, labels[i])
 

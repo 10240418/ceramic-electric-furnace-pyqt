@@ -73,50 +73,53 @@ class AlarmThresholds:
                 alarm_min=150.0, alarm_max=1960.0
             )
         
-        # 电极弧流默认值：1500A-8000A
+        # 电极弧流默认值：0A-7999A
         if self.arc_current_u is None:
             self.arc_current_u = ThresholdConfig(
-                warning_min=2000.0, warning_max=6000.0,
-                alarm_min=1500.0, alarm_max=8000.0
+                warning_min=0.0, warning_max=7999.0,
+                alarm_min=0.0, alarm_max=8000.0
             )
         if self.arc_current_v is None:
             self.arc_current_v = ThresholdConfig(
-                warning_min=2000.0, warning_max=6000.0,
-                alarm_min=1500.0, alarm_max=8000.0
+                warning_min=0.0, warning_max=7999.0,
+                alarm_min=0.0, alarm_max=8000.0
             )
         if self.arc_current_w is None:
             self.arc_current_w = ThresholdConfig(
-                warning_min=2000.0, warning_max=6000.0,
-                alarm_min=1500.0, alarm_max=8000.0
+                warning_min=0.0, warning_max=7999.0,
+                alarm_min=0.0, alarm_max=8000.0
             )
         
-        # 电极弧压默认值：50V-100V
+        # 电极弧压默认值：50V-100V（默认不启用）
         if self.arc_voltage_u is None:
             self.arc_voltage_u = ThresholdConfig(
                 warning_min=60.0, warning_max=70.0,
-                alarm_min=50.0, alarm_max=100.0
+                alarm_min=50.0, alarm_max=100.0,
+                enabled=False
             )
         if self.arc_voltage_v is None:
             self.arc_voltage_v = ThresholdConfig(
                 warning_min=60.0, warning_max=70.0,
-                alarm_min=50.0, alarm_max=100.0
+                alarm_min=50.0, alarm_max=100.0,
+                enabled=False
             )
         if self.arc_voltage_w is None:
             self.arc_voltage_w = ThresholdConfig(
                 warning_min=60.0, warning_max=70.0,
-                alarm_min=50.0, alarm_max=100.0
+                alarm_min=50.0, alarm_max=100.0,
+                enabled=False
             )
         
-        # 冷却水压力默认值：4kPa-60kPa（旧默认值）
+        # 冷却水压力默认值：10kPa-10kPa
         if self.cooling_pressure_shell is None:
             self.cooling_pressure_shell = ThresholdConfig(
-                warning_min=8.0, warning_max=55.0,
-                alarm_min=4.0, alarm_max=60.0
+                warning_min=10.0, warning_max=10.0,
+                alarm_min=10.0, alarm_max=10.0
             )
         if self.cooling_pressure_cover is None:
             self.cooling_pressure_cover = ThresholdConfig(
-                warning_min=8.0, warning_max=55.0,
-                alarm_min=4.0, alarm_max=60.0
+                warning_min=10.0, warning_max=10.0,
+                alarm_min=10.0, alarm_max=10.0
             )
         
         # 冷却水流速默认值：禁用
@@ -136,8 +139,8 @@ class AlarmThresholds:
         # 过滤器压差默认值：30kPa-50kPa
         if self.filter_pressure_diff is None:
             self.filter_pressure_diff = ThresholdConfig(
-                warning_min=None, warning_max=30.0,
-                alarm_min=None, alarm_max=50.0
+                warning_min=None, warning_max=10.0,
+                alarm_min=None, alarm_max=10.0
             )
 
 
