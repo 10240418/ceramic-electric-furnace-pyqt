@@ -5,6 +5,7 @@ from .switch_theme import SwitchTheme
 from .button_tech import ButtonTech, ButtonTechSecondary, ButtonTechDanger, ButtonIcon
 from .panel_tech import PanelTech, PanelTechGlow
 from .label_blinking import LabelBlinking, LabelBlinkingFade
+from .label_clock import LabelClock
 
 __all__ = [
     'SwitchTheme',
@@ -16,4 +17,5 @@ __all__ = [
     'PanelTechGlow',
     'LabelBlinking',
     'LabelBlinkingFade',
+    'LabelClock',
 ]

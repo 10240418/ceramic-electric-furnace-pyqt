@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from ui.styles.themes import ThemeManager
 from ui.widgets.common.switch_theme import SwitchTheme
+from ui.widgets.common.label_clock import LabelClock
 from backend.bridge.data_cache import get_data_cache
 from backend.bridge.service_manager import ServiceManager
 from backend.plc.plc_manager import get_plc_manager
@@ -38,11 +39,6 @@ class TopNavBar(QFrame):
         
         # 设置按钮
         self.settings_button = None
-        
-        # 时钟定时器
-        self.clock_timer = QTimer()
-        self.clock_timer.timeout.connect(self.update_clock)
-        self.clock_timer.start(1000)  # 每秒更新
         
         # 状态查询定时器 (5秒一次)
         self.status_timer = QTimer()
@@ -83,7 +79,7 @@ class TopNavBar(QFrame):
         logo_widget = self.create_logo()
         layout.addWidget(logo_widget)
         
-        layout.addSpacing(20)
+        layout.addSpacing(8)
         
         # 导航按钮
         for i, nav_text in enumerate(self.nav_items):
@@ -94,11 +90,8 @@ class TopNavBar(QFrame):
         layout.addStretch()
         
         # 时钟显示
-        self.clock_widget = self.create_clock_label()
+        self.clock_widget = LabelClock()
         layout.addWidget(self.clock_widget)
-        
-        # 立即更新一次时钟
-        self.update_clock()
         
         layout.addSpacing(-8)  # 时钟和PLC状态之间减小12px (原来4px，现在-8px，总共减小12px)
         
@@ -159,30 +152,7 @@ class TopNavBar(QFrame):
         btn.clicked.connect(lambda: self.on_nav_clicked(index))
         return btn
     
-    # 5. 创建时钟标签
-    def create_clock_label(self):
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)  # 日期和时间之间间距4px
-        
-        # 日期标签 (月-日)
-        self.date_label = QLabel()
-        self.date_label.setObjectName("date_label")
-        self.date_label.setFont(QFont("Consolas", 18, QFont.Weight.Bold))
-        self.date_label.setText("01-01")  # 初始值
-        layout.addWidget(self.date_label)
-        
-        # 时间标签 (时:分:秒)
-        self.time_label = QLabel()
-        self.time_label.setObjectName("time_label")
-        self.time_label.setFont(QFont("Consolas", 18, QFont.Weight.Bold))
-        self.time_label.setText("00:00:00")  # 初始值
-        layout.addWidget(self.time_label)
-        
-        return widget
-    
-    # 6. 创建状态指示器
+    # 5. 创建状态指示器
     def create_status_indicator(self, name: str):
         widget = QWidget()
         widget.setObjectName(f"status_{name.lower()}")
@@ -198,7 +168,7 @@ class TopNavBar(QFrame):
         
         return widget
     
-    # 7. 创建设置按钮
+    # 6. 创建设置按钮
     def create_settings_button(self):
         # 获取 SVG 图标路径 (从当前文件向上3层到项目根目录)
         # top_nav_bar.py -> bar -> widgets -> ui -> 项目根目录
@@ -232,7 +202,7 @@ class TopNavBar(QFrame):
         btn.clicked.connect(self.on_settings_clicked)
         return btn
     
-    # 8. 创建窗口控制按钮
+    # 7. 创建窗口控制按钮
     def create_window_controls(self):
         widget = QWidget()
         layout = QHBoxLayout(widget)
@@ -265,7 +235,7 @@ class TopNavBar(QFrame):
         
         return widget
     
-    # 9. 导航按钮点击处理
+    # 8. 导航按钮点击处理
     def on_nav_clicked(self, index: int):
         if self.current_nav_index == index:
             return
@@ -275,21 +245,13 @@ class TopNavBar(QFrame):
         self.apply_styles()
         self.nav_changed.emit(index)
     
-    # 10. 设置按钮点击处理
+    # 9. 设置按钮点击处理
     def on_settings_clicked(self):
         # 发送特殊索引 4 表示设置页面（因为现在有4个导航页面了）
         self.current_nav_index = -1  # 设置页面不算在导航索引中
         self.is_settings_active = True  # 激活设置页面
         self.apply_styles()
         self.nav_changed.emit(4)
-    
-    # 9. 更新时钟显示
-    def update_clock(self):
-        now = datetime.now()
-        date_str = now.strftime("%m-%d")  # 月-日
-        time_str = now.strftime("%H:%M:%S")  # 时:分:秒
-        self.date_label.setText(date_str)
-        self.time_label.setText(time_str)
     
     # 10. 更新状态显示
     def update_status(self):
@@ -396,22 +358,6 @@ class TopNavBar(QFrame):
             /* 标题 */
             QLabel#nav_title {{
                 color: {tm.border_glow()};
-            }}
-            
-            /* 时钟 - 日期 */
-            QLabel#date_label {{
-                color: {tm.border_glow()};
-                background: transparent;
-                border: none;
-                padding: 6px 8px;
-            }}
-            
-            /* 时钟 - 时间 */
-            QLabel#time_label {{
-                color: {tm.border_glow()};
-                background: transparent;
-                border: none;
-                padding: 6px 8px;
             }}
             
             /* 窗口控制按钮 */
@@ -527,8 +473,8 @@ class TopNavBar(QFrame):
     
     # 17. 清理资源
     def cleanup(self):
-        if self.clock_timer:
-            self.clock_timer.stop()
+        if self.clock_widget:
+            self.clock_widget.cleanup()
         if self.status_timer:
             self.status_timer.stop()
     

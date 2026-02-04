@@ -245,6 +245,50 @@ class PLCManager:
                 # 使用限流器记录错误日志（60秒内只记录一次）
                 log_throttler.log_error("plc_read_output_failed", f"PLC 读取输出区失败 Q{start}: {e}")
                 return (None, str(e))
+    
+    def read_input_area(self, start: int, size: int) -> Tuple[Optional[bytes], str]:
+        """读取 PLC 输入区域 (I 区)
+        
+        Args:
+            start: 起始字节偏移量 (例如 %I4.x 则 start=4)
+            size: 读取字节数
+            
+        Returns:
+            (数据, 错误信息)
+            
+        示例:
+            读取 %I4.6:
+            data, err = plc.read_input_area(4, 1)  # 读取1字节 (I4)
+            i4_6 = (data[0] >> 6) & 0x01  # I4.6
+        """
+        with self._rw_lock:
+            if not self._connected or not self._client:
+                success, msg = self._connect_internal()
+                if not success:
+                    return (None, msg)
+            
+            try:
+                # snap7 area codes: 0x81 = Input (I)
+                # 兼容 snap7 1.x 和 2.x 版本
+                try:
+                    from snap7.snap7types import S7AreaPE
+                    data = self._client.read_area(S7AreaPE, 0, start, size)
+                except (ImportError, AttributeError):
+                    # snap7 2.x: Area 直接在 snap7 模块下
+                    from snap7 import Area
+                    data = self._client.read_area(Area.PE, 0, start, size)
+                
+                self._last_read_time = datetime.now()
+                self._consecutive_error_count = 0
+                return (bytes(data), "")
+            except Exception as e:
+                self._error_count += 1
+                self._consecutive_error_count += 1
+                self._last_error = str(e)
+                
+                # 使用限流器记录错误日志（60秒内只记录一次）
+                log_throttler.log_error("plc_read_input_failed", f"PLC 读取输入区失败 I{start}: {e}")
+                return (None, str(e))
 
     def get_status(self) -> Dict[str, Any]:
         """获取连接状态信息"""

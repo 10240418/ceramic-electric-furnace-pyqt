@@ -39,6 +39,9 @@ class CardHopper(QFrame):
         
         # 监听主题变化
         self.theme_manager.theme_changed.connect(self.on_theme_changed)
+        
+        # 添加默认测试数据
+        self.add_default_records()
     
     # 2. 初始化 UI
     def init_ui(self):
@@ -100,7 +103,12 @@ class CardHopper(QFrame):
         self.set_limit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.set_limit_btn.clicked.connect(self.on_set_limit_clicked)
         layout.addWidget(self.set_limit_btn)
-        layout.addSpacing(10)
+        
+        # 分割线
+        divider = QFrame()
+        divider.setObjectName("divider")
+        divider.setFixedHeight(1)
+        layout.addWidget(divider)
         
         # 料仓上限数据块
         self.upper_limit_block = self.create_data_block("料仓上限:", "5000", "kg")
@@ -251,15 +259,15 @@ class CardHopper(QFrame):
         # 根据状态设置颜色
         colors = self.theme_manager.get_colors()
         state_color_map = {
-            'idle': colors.TEXT_SECONDARY,
+            'idle': colors.TEXT_PRIMARY,
             'feeding': colors.GLOW_PRIMARY,
             'waiting_feed': '#FFA500',
             'discharging': '#00FF00'
         }
         self.status_value_label.setStyleSheet(f"""
             QLabel#statusValue {{
-                color: {state_color_map.get(state, colors.TEXT_SECONDARY)};
-                font-size: 16px;
+                color: {state_color_map.get(state, colors.TEXT_PRIMARY)};
+                font-size: 24px;
                 font-weight: bold;
                 border: none;
                 background: transparent;
@@ -296,21 +304,23 @@ class CardHopper(QFrame):
         item = QFrame()
         item.setObjectName("recordItem")
         item.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        item.setMinimumHeight(64)
+        item.setMinimumHeight(42)
 
         layout = QHBoxLayout(item)
-        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setContentsMargins(8, 2, 8, 2)
         layout.setSpacing(12)
         
         time_container = QVBoxLayout()
         time_container.setContentsMargins(0, 0, 0, 0)
-        time_container.setSpacing(2)
+        time_container.setSpacing(0)
         date_label = QLabel(timestamp.strftime("%Y-%m-%d"))
         date_label.setObjectName("recordDate")
         date_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        date_label.setFixedHeight(16)
         time_label = QLabel(timestamp.strftime("%H:%M:%S"))
         time_label.setObjectName("recordTime")
         time_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        time_label.setFixedHeight(16)
         time_container.addWidget(date_label)
         time_container.addWidget(time_label)
         layout.addLayout(time_container, stretch=3)
@@ -319,14 +329,13 @@ class CardHopper(QFrame):
         weight_layout.setContentsMargins(0, 0, 0, 0)
         weight_layout.setSpacing(4)
         weight_layout.addStretch()
-        weight_label = QLabel("投料重量:")
-        weight_label.setObjectName("recordWeightLabel")
-        weight_layout.addWidget(weight_label)
         weight_value_label = QLabel(f"{weight:.1f}")
         weight_value_label.setObjectName("recordWeightValue")
+        weight_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         weight_layout.addWidget(weight_value_label)
         unit_label = QLabel("kg")
         unit_label.setObjectName("recordUnit")
+        unit_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         weight_layout.addWidget(unit_label)
         layout.addLayout(weight_layout, stretch=2)
         
@@ -352,7 +361,8 @@ class CardHopper(QFrame):
         """
         self.clear_records()
         
-        for record in records:
+        # 反转记录列表，让最新的记录显示在最上面
+        for record in reversed(records):
             self.add_record(record['timestamp'], record['weight'])
         self.records_layout.addStretch()
     
@@ -443,7 +453,7 @@ class CardHopper(QFrame):
             }}
             
             QFrame#leftPanel {{
-                background: {colors.BG_MEDIUM};
+                background: transparent;
                 border-left: 1px solid {colors.BORDER_DARK};
                 border-top: 1px solid {colors.BORDER_DARK};
                 border-bottom: 1px solid {colors.BORDER_DARK};
@@ -482,6 +492,12 @@ class CardHopper(QFrame):
                 background: {colors.BG_MEDIUM};
             }}
             
+            QFrame#divider {{
+                background: {colors.BORDER_DARK};
+                border: none;
+                margin: 10px 0px;
+            }}
+            
             QFrame#dataBlock {{
                 background: transparent;
                 border: none;
@@ -504,7 +520,7 @@ class CardHopper(QFrame):
             }}
             
             QLabel#blockLabel {{
-                color: {colors.TEXT_SECONDARY};
+                color: {colors.TEXT_PRIMARY};
                 font-size: 14px;
                 border: none;
                 background: transparent;
@@ -512,7 +528,7 @@ class CardHopper(QFrame):
             
             QLabel#blockValue {{
                 color: {colors.GLOW_PRIMARY};
-                font-size: 22px;
+                font-size: 28px;
                 font-weight: bold;
                 font-family: "Roboto Mono";
                 border: none;
@@ -520,8 +536,8 @@ class CardHopper(QFrame):
             }}
             
             QLabel#blockUnit {{
-                color: {colors.TEXT_SECONDARY};
-                font-size: 16px;
+                color: {colors.TEXT_PRIMARY};
+                font-size: 20px;
                 border: none;
                 background: transparent;
             }}
@@ -534,8 +550,8 @@ class CardHopper(QFrame):
             }}
             
             QLabel#statusValue {{
-                color: {colors.TEXT_SECONDARY};
-                font-size: 18px;
+                color: {colors.TEXT_PRIMARY};
+                font-size: 24px;
                 font-weight: bold;
                 border: none;
                 background: transparent;
@@ -561,19 +577,37 @@ class CardHopper(QFrame):
                 border-bottom: none;
             }}
             
-            QLabel#recordDate, QLabel#recordTime {{
+            QLabel#recordDate {{
                 color: {colors.TEXT_SECONDARY};
                 font-size: 14px;
                 font-weight: 600;
                 border: none;
                 background: transparent;
+                padding: 0px;
             }}
             
-            QLabel#recordWeightLabel, QLabel#recordWeightValue, QLabel#recordUnit {{
-                color: {colors.GLOW_PRIMARY};
-                font-size: 16px;
+            QLabel#recordTime {{
+                color: {colors.TEXT_SECONDARY};
+                font-size: 14px;
+                font-weight: 600;
+                border: none;
+                background: transparent;
+                padding: 0px;
+            }}
+            
+            QLabel#recordWeightValue {{
+                color: {colors.TEXT_PRIMARY};
+                font-size: 20px;
                 font-weight: bold;
                 font-family: "Roboto Mono";
+                border: none;
+                background: transparent;
+            }}
+            
+            QLabel#recordUnit {{
+                color: {colors.TEXT_PRIMARY};
+                font-size: 18px;
+                font-weight: bold;
                 border: none;
                 background: transparent;
             }}
@@ -601,6 +635,20 @@ class CardHopper(QFrame):
             }}
         """)
     
-    # 17. 主题变化时重新应用样式
+    # 17. 添加默认测试记录
+    def add_default_records(self):
+        """添加默认测试记录（用于 UI 测试）"""
+        from datetime import timedelta
+        
+        # 生成 10 条测试记录
+        base_time = datetime.now()
+        test_weights = [150.5, 200.3, 175.8, 220.1, 190.6, 165.4, 210.9, 185.2, 195.7, 205.3]
+        
+        for i, weight in enumerate(test_weights):
+            # 每条记录间隔 5 分钟
+            record_time = base_time - timedelta(minutes=i * 5)
+            self.add_record(record_time, weight)
+    
+    # 18. 主题变化时重新应用样式
     def on_theme_changed(self):
         self.apply_styles()

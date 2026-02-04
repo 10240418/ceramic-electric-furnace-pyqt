@@ -331,14 +331,15 @@ async def _db32_sensor_polling_loop(
             current_batch = batch_info.get('batch_code', '')
             is_smelting = batch_info.get('is_smelting', False)
             
-            # 只有在冶炼状态时才处理料仓数据
-            if is_smelting and current_batch and db18_data and db19_data:
+            # 修复: 无论是否冶炼，都处理料仓数据（更新实时状态）
+            # 只有在冶炼状态时才写入历史数据库
+            if db18_data and db19_data:
                 process_hopper_plc_func(
                     db18_data=db18_data,
                     db19_data=db19_data,
                     q_data=q_data,
                     i_data=i_data,
-                    batch_code=current_batch
+                    batch_code=current_batch  # 无批次号时传空字符串
                 )
             
             # 批量写入逻辑 (每15秒写一次: 0.5s×30=15s)

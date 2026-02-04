@@ -10,10 +10,11 @@ from ui.styles.themes import ThemeManager
 class ElectrodeData:
     """电极数据模型"""
 
-    def __init__(self, name: str, set_value: float, actual_value: float):
+    def __init__(self, name: str, set_value: float, actual_value: float, voltage: float = 0):
         self.name = name
         self.set_value = set_value
         self.actual_value = actual_value
+        self.voltage = voltage  # 弧压
 
 
 class ChartElectrode(QWidget):
@@ -23,10 +24,11 @@ class ChartElectrode(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.theme_manager = ThemeManager.instance()
+        # 设置默认值：设定值 5929A，实际值 5950A，弧压 85V（方便查看 UI 效果）
         self.electrodes = [
-            ElectrodeData("1#电极", 0, 0),
-            ElectrodeData("2#电极", 0, 0),
-            ElectrodeData("3#电极", 0, 0),
+            ElectrodeData("1#电极", 5929, 5950, 85),
+            ElectrodeData("2#电极", 5929, 5920, 86),
+            ElectrodeData("3#电极", 5929, 5935, 84),
         ]
         self.deadzone_percent = 15.0  # 死区百分比，默认15%
 
@@ -79,12 +81,16 @@ class ChartElectrode(QWidget):
         # 上部分：弧流+死区（26%高度）
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
-        top_layout.setContentsMargins(8, 8, 8, 8)
-        top_layout.setSpacing(4)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(0)
 
+        # 垂直居中：上方添加 stretch
+        top_layout.addStretch()
+        
         # 标题：弧流(KA)
         title_label = QLabel("弧流(KA)")
         title_label.setObjectName("dataTitle")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         font = QFont("Microsoft YaHei", 13)
         font.setBold(True)
         title_label.setFont(font)
@@ -93,10 +99,20 @@ class ChartElectrode(QWidget):
         # 死区
         self.deadzone_label = QLabel(f"死区: {int(self.deadzone_percent)}%")
         self.deadzone_label.setObjectName("deadzoneLabel")
+        self.deadzone_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         font = QFont("Microsoft YaHei", 13)
         self.deadzone_label.setFont(font)
         top_layout.addWidget(self.deadzone_label)
 
+        # 弧压
+        voltage_label = QLabel("弧压(10V)")
+        voltage_label.setObjectName("voltageLabel")
+        voltage_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        font = QFont("Microsoft YaHei", 13)
+        voltage_label.setFont(font)
+        top_layout.addWidget(voltage_label)
+
+        # 垂直居中：下方添加 stretch
         top_layout.addStretch()
         layout.addWidget(top_widget, stretch=26)
 
@@ -107,32 +123,36 @@ class ChartElectrode(QWidget):
         separator.setObjectName("separator")
         layout.addWidget(separator)
 
-        # 中部分：设定值（37%高度）
-        set_widget = QWidget()
-        set_layout = QVBoxLayout(set_widget)
-        set_layout.setContentsMargins(8, 8, 8, 8)
-        set_layout.setSpacing(4)
+        # 中部分：上限（37%高度）
+        upper_widget = QWidget()
+        upper_layout = QVBoxLayout(upper_widget)
+        upper_layout.setContentsMargins(0, 0, 0, 0)
+        upper_layout.setSpacing(0)
 
-        # 设定值标题
-        set_title = QLabel("设定值")
-        set_title.setObjectName("sectionTitle")
+        # 垂直居中：上方添加 stretch
+        upper_layout.addStretch()
+        
+        # 上限标题
+        upper_title = QLabel("上限")
+        upper_title.setObjectName("sectionTitle")
+        upper_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         font = QFont("Microsoft YaHei", 13)
         font.setBold(True)
-        set_title.setFont(font)
-        set_layout.addWidget(set_title)
+        upper_title.setFont(font)
+        upper_layout.addWidget(upper_title)
 
-        # 设定值数据
-        self.set_labels = []
+        # 上限数据
+        self.upper_labels = []
         for i in range(3):
-            label = QLabel(f"{i+1}#: 0")
-            label.setObjectName(f"setLabel_{i}")
-            font = QFont("Roboto Mono", 13)
-            label.setFont(font)
-            set_layout.addWidget(label)
-            self.set_labels.append(label)
+            label = QLabel(f"{i+1}#: 5929 A")
+            label.setObjectName(f"upperLabel_{i}")
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            upper_layout.addWidget(label)
+            self.upper_labels.append(label)
 
-        set_layout.addStretch()
-        layout.addWidget(set_widget, stretch=37)
+        # 垂直居中：下方添加 stretch
+        upper_layout.addStretch()
+        layout.addWidget(upper_widget, stretch=37)
 
         # 分隔线
         separator2 = QFrame()
@@ -141,32 +161,36 @@ class ChartElectrode(QWidget):
         separator2.setObjectName("separator")
         layout.addWidget(separator2)
 
-        # 下部分：实际值（37%高度）
-        actual_widget = QWidget()
-        actual_layout = QVBoxLayout(actual_widget)
-        actual_layout.setContentsMargins(8, 8, 8, 8)
-        actual_layout.setSpacing(4)
+        # 下部分：下限（37%高度）
+        lower_widget = QWidget()
+        lower_layout = QVBoxLayout(lower_widget)
+        lower_layout.setContentsMargins(0, 0, 0, 0)
+        lower_layout.setSpacing(0)
 
-        # 实际值标题
-        actual_title = QLabel("实际值")
-        actual_title.setObjectName("sectionTitle")
+        # 垂直居中：上方添加 stretch
+        lower_layout.addStretch()
+        
+        # 下限标题
+        lower_title = QLabel("下限")
+        lower_title.setObjectName("sectionTitle")
+        lower_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         font = QFont("Microsoft YaHei", 13)
         font.setBold(True)
-        actual_title.setFont(font)
-        actual_layout.addWidget(actual_title)
+        lower_title.setFont(font)
+        lower_layout.addWidget(lower_title)
 
-        # 实际值数据
-        self.actual_labels = []
+        # 下限数据
+        self.lower_labels = []
         for i in range(3):
-            label = QLabel(f"{i+1}#: 0")
-            label.setObjectName(f"actualLabel_{i}")
-            font = QFont("Roboto Mono", 13)
-            label.setFont(font)
-            actual_layout.addWidget(label)
-            self.actual_labels.append(label)
+            label = QLabel(f"{i+1}#: 5929 A")
+            label.setObjectName(f"lowerLabel_{i}")
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            lower_layout.addWidget(label)
+            self.lower_labels.append(label)
 
-        actual_layout.addStretch()
-        layout.addWidget(actual_widget, stretch=37)
+        # 垂直居中：下方添加 stretch
+        lower_layout.addStretch()
+        layout.addWidget(lower_widget, stretch=37)
 
         return panel
 
@@ -226,15 +250,19 @@ class ChartElectrode(QWidget):
         # 更新死区显示
         self.deadzone_label.setText(f"死区: {int(deadzone_percent)}%")
 
-        # 更新设定值标签
+        # 更新上限和下限标签
         for i, electrode in enumerate(electrodes):
-            if i < len(self.set_labels):
-                self.set_labels[i].setText(f"{i+1}#: {int(electrode.set_value)}")
-
-        # 更新实际值标签
-        for i, electrode in enumerate(electrodes):
-            if i < len(self.actual_labels):
-                self.actual_labels[i].setText(f"{i+1}#: {int(electrode.actual_value)}")
+            if i < len(self.upper_labels):
+                # 计算上限：设定值 * (1 + 死区%)
+                upper_limit = int(electrode.set_value * (1 + deadzone_percent / 100.0))
+                # 使用纯文本格式
+                self.upper_labels[i].setText(f"{i+1}#: {upper_limit} A")
+            
+            if i < len(self.lower_labels):
+                # 计算下限：设定值 * (1 - 死区%)
+                lower_limit = int(electrode.set_value * (1 - deadzone_percent / 100.0))
+                # 使用纯文本格式
+                self.lower_labels[i].setText(f"{i+1}#: {lower_limit} A")
 
         # 触发重绘
         self.chart_widget.update()
@@ -249,22 +277,24 @@ class ChartElectrode(QWidget):
         """从字典数据更新图表
         
         Args:
-            data: 包含弧流数据的字典
+            data: 包含弧流和弧压数据的字典
                 {
                     'arc_current': {'U': 5978, 'V': 5980, 'W': 5975},
+                    'arc_voltage': {'U': 85, 'V': 86, 'W': 84},
                     'setpoints': {'U': 5978, 'V': 5978, 'W': 5978},
                     'manual_deadzone_percent': 10.0
                 }
         """
         arc_current = data.get('arc_current', {})
+        arc_voltage = data.get('arc_voltage', {})
         setpoints = data.get('setpoints', {})
         deadzone = data.get('manual_deadzone_percent', 15.0)
         
         # 构建电极数据列表
         electrodes = [
-            ElectrodeData("1#电极", setpoints.get('U', 0), arc_current.get('U', 0)),
-            ElectrodeData("2#电极", setpoints.get('V', 0), arc_current.get('V', 0)),
-            ElectrodeData("3#电极", setpoints.get('W', 0), arc_current.get('W', 0)),
+            ElectrodeData("1#电极", setpoints.get('U', 0), arc_current.get('U', 0), arc_voltage.get('U', 0)),
+            ElectrodeData("2#电极", setpoints.get('V', 0), arc_current.get('V', 0), arc_voltage.get('V', 0)),
+            ElectrodeData("3#电极", setpoints.get('W', 0), arc_current.get('W', 0), arc_voltage.get('W', 0)),
         ]
         
         self.update_data(electrodes, deadzone)
@@ -273,11 +303,21 @@ class ChartElectrode(QWidget):
     def apply_styles(self):
         colors = self.theme_manager.get_colors()
 
-        # 数据面板样式（上下左右都有border）
+        # 数据面板样式（上下左右都有border，左边框使用主题色）
+        if self.theme_manager.is_dark_mode():
+            # 深色主题：左边框使用青蓝色
+            border_left_color = colors.PRIMARY  # 青蓝色 #00D4FF
+        else:
+            # 浅色主题：左边框使用深绿色
+            border_left_color = colors.PRIMARY  # 深绿色 #007663
+        
         self.data_panel.setStyleSheet(f"""
             QFrame#dataPanel {{
                 background: {colors.CARD_BG};
-                border: 1px solid {colors.BORDER_DARK};
+                border-top: 1px solid {colors.BORDER_DARK};
+                border-right: 1px solid {colors.BORDER_DARK};
+                border-bottom: 1px solid {colors.BORDER_DARK};
+                border-left: 1px solid {border_left_color};
                 border-radius: 0px;
             }}
         """)
@@ -290,7 +330,7 @@ class ChartElectrode(QWidget):
                     color: {colors.TEXT_PRIMARY};
                     background: transparent;
                     border: none;
-                    padding: 4px 0px;
+                    padding: 2px 0px 0px 0px;
                 }}
             """)
 
@@ -300,9 +340,21 @@ class ChartElectrode(QWidget):
                 color: {colors.TEXT_PRIMARY};
                 background: transparent;
                 border: none;
-                padding: 2px 0px;
+                padding: 2px 0px 0px 0px;
             }}
         """)
+
+        # 弧压标签
+        voltage_label = self.data_panel.findChild(QLabel, "voltageLabel")
+        if voltage_label:
+            voltage_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {colors.TEXT_PRIMARY};
+                    background: transparent;
+                    border: none;
+                    padding: 2px 0px 0px 0px;
+                }}
+            """)
 
         # 分隔线（完整连接左右边距）
         separators = self.data_panel.findChildren(QFrame, "separator")
@@ -316,7 +368,7 @@ class ChartElectrode(QWidget):
                 }}
             """)
 
-        # 章节标题（设定值/实际值）
+        # 章节标题（上限/下限）
         section_titles = self.data_panel.findChildren(QLabel, "sectionTitle")
         for title in section_titles:
             title.setStyleSheet(f"""
@@ -324,39 +376,31 @@ class ChartElectrode(QWidget):
                     color: {colors.TEXT_PRIMARY};
                     background: transparent;
                     border: none;
-                    padding: 4px 0px;
+                    padding: 2px 0px 0px 0px;
                 }}
             """)
 
-        # 设定值标签颜色
-        if self.theme_manager.is_dark_mode():
-            set_color = "#00D4FF"  # 深色主题：青蓝色
-        else:
-            set_color = "#007663"  # 浅色主题：深绿色
-
-        for label in self.set_labels:
+        # 上限标签颜色（使用主题配色，字体 18px 不加粗）
+        for label in self.upper_labels:
             label.setStyleSheet(f"""
                 QLabel {{
-                    color: {set_color};
+                    color: {colors.TEXT_PRIMARY};
                     background: transparent;
                     border: none;
-                    padding: 2px 0px;
+                    padding: 2px 0px 0px 0px;
+                    font-size: 18px;
                 }}
             """)
 
-        # 实际值标签颜色
-        if self.theme_manager.is_dark_mode():
-            actual_color = "#FFB84D"  # 深色主题：橙黄色
-        else:
-            actual_color = "#D4A017"  # 浅色主题：金黄色
-
-        for label in self.actual_labels:
+        # 下限标签颜色（使用主题配色，字体 18px 不加粗）
+        for label in self.lower_labels:
             label.setStyleSheet(f"""
                 QLabel {{
-                    color: {actual_color};
+                    color: {colors.TEXT_PRIMARY};
                     background: transparent;
                     border: none;
-                    padding: 2px 0px;
+                    padding: 2px 0px 0px 0px;
+                    font-size: 18px;
                 }}
             """)
 
@@ -411,40 +455,46 @@ class ChartWidget(QWidget):
         
         colors = self.theme_manager.get_colors()
         
-        # 固定Y轴范围：1-8 (KA)
-        min_value = 0
-        max_value = 8000  # 8KA = 8000A
+        # 固定Y轴范围
+        min_current = 0
+        max_current = 8000  # 8KA = 8000A（左侧Y轴：弧流）
+        min_voltage = 0
+        max_voltage = 150  # 150V（右侧Y轴：弧压）
         
-        # 绘制区域（紧凑布局，Y轴14px，X轴标签高度22px）
-        y_axis_width = 14  # Y轴刻度宽度（加大4px）
-        x_axis_height = 22  # X轴高度（加大6px）
+        # 绘制区域（左右都有Y轴，左侧Y轴10px，右侧Y轴20px，X轴标签高度22px）
+        left_y_axis_width = 10  # 左侧Y轴刻度宽度
+        right_y_axis_width = 20  # 右侧Y轴刻度宽度（减小10px）
+        x_axis_height = 22  # X轴高度
         chart_rect = QRectF(
-            y_axis_width + 4,  # 左边距18px（为Y轴刻度留空间+4px）
-            8,  # 顶部边距8px（4px+4px）
-            self.width() - y_axis_width - 8 - 4,  # 右边距8px（紧凑）
+            left_y_axis_width + 4,  # 左边距14px（为左侧Y轴刻度留空间）
+            8,  # 顶部边距8px
+            self.width() - left_y_axis_width - right_y_axis_width - 4,  # 减去左右Y轴宽度，右边距减小
             self.height() - x_axis_height - 8  # 底部留22px给X轴标签
         )
         
         # 绘制Y轴和X轴
         self.draw_axes(painter, chart_rect, colors)
         
-        # 绘制Y轴刻度（1-8）
-        self.draw_y_axis(painter, min_value, max_value, y_axis_width, chart_rect, colors)
+        # 绘制左侧Y轴刻度（弧流：0-8 KA）
+        self.draw_left_y_axis(painter, min_current, max_current, left_y_axis_width, chart_rect, colors)
+        
+        # 绘制右侧Y轴刻度（弧压：0-150 V）
+        self.draw_right_y_axis(painter, min_voltage, max_voltage, chart_rect, colors)
         
         # 绘制上下限线（根据死区计算）
-        self.draw_limit_lines(painter, chart_rect, min_value, max_value, colors)
+        self.draw_limit_lines(painter, chart_rect, min_current, max_current, colors)
         
-        # 绘制柱状图（6根柱子：3个电极 x 2种值）
-        self.draw_bars(painter, chart_rect, min_value, max_value, colors)
+        # 绘制柱状图（9根柱子：3个电极 x 3种值）
+        self.draw_bars(painter, chart_rect, min_current, max_current, min_voltage, max_voltage, colors)
         
         # 绘制X轴标签（1#电极、2#电极、3#电极）
         self.draw_x_labels(painter, chart_rect, colors)
     
-    # 3. 绘制坐标轴（带箭头）
+    # 3. 绘制坐标轴（带箭头，左右两侧Y轴）
     def draw_axes(self, painter: QPainter, chart_rect: QRectF, colors):
         painter.setPen(QPen(QColor(colors.BORDER_DARK), 2))
         
-        # Y轴
+        # 左侧Y轴
         painter.drawLine(
             int(chart_rect.left()), 
             int(chart_rect.top()), 
@@ -452,7 +502,7 @@ class ChartWidget(QWidget):
             int(chart_rect.bottom())
         )
         
-        # Y轴箭头（三角形）
+        # 左侧Y轴箭头（三角形）
         arrow_size = 8
         y_arrow_points = [
             (chart_rect.left(), chart_rect.top()),
@@ -463,6 +513,22 @@ class ChartWidget(QWidget):
         from PyQt6.QtGui import QPolygonF
         from PyQt6.QtCore import QPointF
         painter.drawPolygon(QPolygonF([QPointF(x, y) for x, y in y_arrow_points]))
+        
+        # 右侧Y轴
+        painter.drawLine(
+            int(chart_rect.right()), 
+            int(chart_rect.top()), 
+            int(chart_rect.right()), 
+            int(chart_rect.bottom())
+        )
+        
+        # 右侧Y轴箭头（三角形）
+        y_arrow_points_right = [
+            (chart_rect.right(), chart_rect.top()),
+            (chart_rect.right() - arrow_size / 2, chart_rect.top() + arrow_size),
+            (chart_rect.right() + arrow_size / 2, chart_rect.top() + arrow_size),
+        ]
+        painter.drawPolygon(QPolygonF([QPointF(x, y) for x, y in y_arrow_points_right]))
         
         # X轴
         painter.drawLine(
@@ -480,11 +546,11 @@ class ChartWidget(QWidget):
         ]
         painter.drawPolygon(QPolygonF([QPointF(x, y) for x, y in x_arrow_points]))
     
-    # 4. 绘制Y轴刻度（1-8 KA）
-    def draw_y_axis(self, painter: QPainter, min_value: float, max_value: float, width: int, chart_rect: QRectF, colors):
+    # 4. 绘制左侧Y轴刻度（弧流：0-8 KA）
+    def draw_left_y_axis(self, painter: QPainter, min_value: float, max_value: float, width: int, chart_rect: QRectF, colors):
         painter.setPen(QColor(colors.TEXT_PRIMARY))
-        font = QFont("Microsoft YaHei", 10)  # 紧凑字号10
-        font.setBold(True)  # 加粗
+        font = QFont("Microsoft YaHei", 10)
+        font.setBold(True)
         painter.setFont(font)
 
         # 9个刻度：0, 1, 2, 3, 4, 5, 6, 7, 8
@@ -506,14 +572,46 @@ class ChartWidget(QWidget):
             # 绘制刻度值（在Y轴左侧）
             painter.setPen(QColor(colors.TEXT_PRIMARY))
             text = f"{value}"
-            # 刻度值绘制区域：从左边缘到Y轴左侧（紧凑）
+            # 刻度值绘制区域：从左边缘到Y轴左侧
             painter.drawText(
                 QRectF(0, y - 8, chart_rect.left() - 4, 16),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                 text
             )
     
-    # 5. 绘制上下限线（根据死区计算，不显示数值标签）
+    # 4.5 绘制右侧Y轴刻度（弧压：0-150 V）
+    def draw_right_y_axis(self, painter: QPainter, min_value: float, max_value: float, chart_rect: QRectF, colors):
+        painter.setPen(QColor(colors.TEXT_PRIMARY))
+        font = QFont("Microsoft YaHei", 9)
+        font.setBold(True)
+        painter.setFont(font)
+
+        # 16个刻度：0, 1, 2, ..., 15（代表 0V, 10V, 20V, ..., 150V）
+        for i in range(16):
+            value_v = i * 10  # 电压值（V）
+            ratio = value_v / max_value
+            y = chart_rect.bottom() - chart_rect.height() * ratio
+
+            # 绘制刻度线
+            painter.setPen(QPen(QColor(colors.BORDER_DARK), 1))
+            painter.drawLine(
+                int(chart_rect.right()),
+                int(y),
+                int(chart_rect.right() + 4),
+                int(y)
+            )
+
+            # 绘制刻度值（在Y轴右侧）
+            painter.setPen(QColor(colors.TEXT_PRIMARY))
+            text = f"{i}"
+            # 刻度值绘制区域：从Y轴右侧开始
+            painter.drawText(
+                QRectF(chart_rect.right() + 6, y - 8, 24, 16),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                text
+            )
+    
+    # 5. 绘制上下限线（根据死区计算，在最右边添加文字标注）
     def draw_limit_lines(self, painter: QPainter, chart_rect: QRectF, min_value: float, max_value: float, colors):
         value_range = max_value - min_value
         if value_range <= 0:
@@ -547,6 +645,14 @@ class ChartWidget(QWidget):
         painter.setPen(QPen(upper_color, 2, Qt.PenStyle.DashLine))
         painter.drawLine(int(chart_rect.left()), int(upper_y), int(chart_rect.right()), int(upper_y))
         
+        # 在上限线最右边添加文字标注（右移 14px）
+        painter.setPen(upper_color)
+        font = QFont("Microsoft YaHei", 11)
+        font.setBold(True)
+        painter.setFont(font)
+        text_rect = QRectF(chart_rect.right() - 60 + 14, upper_y - 20, 55, 20)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, "上限")
+        
         # 下限线颜色（适配主题）
         lower_color = QColor(colors.STATUS_INFO) if hasattr(colors, 'STATUS_INFO') else QColor("#4444FF")
         
@@ -556,64 +662,90 @@ class ChartWidget(QWidget):
         
         painter.setPen(QPen(lower_color, 2, Qt.PenStyle.DashLine))
         painter.drawLine(int(chart_rect.left()), int(lower_y), int(chart_rect.right()), int(lower_y))
+        
+        # 在下限线最右边添加文字标注（右移 14px）
+        painter.setPen(lower_color)
+        painter.setFont(font)
+        text_rect = QRectF(chart_rect.right() - 60 + 14, lower_y - 20, 55, 20)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, "下限")
     
-    # 6. 绘制柱状图（6根柱子）
-    def draw_bars(self, painter: QPainter, chart_rect: QRectF, min_value: float, max_value: float, colors):
+    # 6. 绘制柱状图（9根柱子：3个电极 x 3种值）
+    def draw_bars(self, painter: QPainter, chart_rect: QRectF, min_current: float, max_current: float, min_voltage: float, max_voltage: float, colors):
         electrode_count = len(self.chart.electrodes)
         if electrode_count == 0:
             return
 
-        value_range = max_value - min_value
-        if value_range <= 0:
+        current_range = max_current - min_current
+        voltage_range = max_voltage - min_voltage
+        if current_range <= 0 or voltage_range <= 0:
             return
 
         # 计算每个电极组的宽度
         group_width = chart_rect.width() / electrode_count
-        bar_width = 28  # 单个柱子宽度（紧凑）
-        spacing = 18  # 柱子间距（加大6px）
+        bar_width = 30  # 单个柱子宽度
+        bar_spacing = 6  # 每组内柱子间距
+        group_spacing = -4  # 组间距调整（加大2px，从-6px改为-4px）
         
         # 配色方案（适配主题）
         if self.theme_manager.is_dark_mode():
-            # 深色主题：青蓝色 + 橙黄色
-            set_color = QColor("#00D4FF")      # 青蓝色（设定值）
-            actual_color = QColor("#FFB84D")   # 橙黄色（实际值）
+            # 深色主题
+            set_color = QColor("#00D4FF")      # 青蓝色（设定值弧流）
+            actual_color = QColor("#FFB84D")   # 橙黄色（实际值弧流）
+            voltage_color = QColor("#00FF88")  # 绿色（弧压）
         else:
-            # 浅色主题：深绿色 + 金黄色
-            set_color = QColor("#007663")      # 深绿色（设定值）
-            actual_color = QColor("#D4A017")   # 金黄色（实际值）
+            # 浅色主题
+            set_color = QColor("#007663")      # 深绿色（设定值弧流）
+            actual_color = QColor("#D4A017")   # 金黄色（实际值弧流）
+            voltage_color = QColor("#00AA55")  # 深绿色（弧压）
         
         for i, electrode in enumerate(self.chart.electrodes):
-            # 计算组的中心位置
-            group_center_x = chart_rect.left() + group_width * (i + 0.5)
+            # 计算组的中心位置（考虑组间距调整）
+            group_center_x = chart_rect.left() + group_width * (i + 0.5) + group_spacing * i
             
-            # 设定值柱（左侧）
-            set_x = group_center_x - bar_width - spacing / 2
+            # 设定值弧流柱（左侧）
+            set_x = group_center_x - bar_width * 1.5 - bar_spacing
             self.draw_single_bar(
                 painter,
                 set_x,
                 chart_rect,
                 electrode.set_value,
-                min_value,
-                max_value,
+                min_current,
+                max_current,
                 set_color,
-                bar_width
+                bar_width,
+                "current"
             )
             
-            # 实际值柱（右侧）
-            actual_x = group_center_x + spacing / 2
+            # 实际值弧流柱（中间）
+            actual_x = group_center_x - bar_width / 2
             self.draw_single_bar(
                 painter,
                 actual_x,
                 chart_rect,
                 electrode.actual_value,
-                min_value,
-                max_value,
+                min_current,
+                max_current,
                 actual_color,
-                bar_width
+                bar_width,
+                "current"
+            )
+            
+            # 弧压柱（右侧，使用右侧Y轴比例）
+            voltage_x = group_center_x + bar_width / 2 + bar_spacing
+            self.draw_single_bar(
+                painter,
+                voltage_x,
+                chart_rect,
+                electrode.voltage,
+                min_voltage,
+                max_voltage,
+                voltage_color,
+                bar_width,
+                "voltage"
             )
     
     # 7. 绘制单个柱子
-    def draw_single_bar(self, painter: QPainter, x: float, chart_rect: QRectF, value: float, min_value: float, max_value: float, color: QColor, bar_width: float):
+    def draw_single_bar(self, painter: QPainter, x: float, chart_rect: QRectF, value: float, min_value: float, max_value: float, color: QColor, bar_width: float, bar_type: str = "current"):
         value_range = max_value - min_value
         if value_range <= 0:
             return
@@ -637,17 +769,22 @@ class ChartWidget(QWidget):
         
         painter.setBrush(gradient)
         painter.setPen(QPen(color, 2))  # 2px边框
-        painter.drawRoundedRect(bar_rect, 2, 2)  # 圆角从4减小到2
+        painter.drawRoundedRect(bar_rect, 2, 2)
         
-        # 绘制精确数值标签（显示完整数值，字体更大）
+        # 绘制精确数值标签
         if height_ratio > 0.05:
             painter.setPen(color)
-            font = QFont("Roboto Mono", 14)  # 字体大小从11增加到14
+            font = QFont("Roboto Mono", 11)
             font.setBold(True)
             painter.setFont(font)
             
-            label = f"{int(value)}"
-            label_rect = QRectF(x - 10, bar_rect.top() - 24, bar_width + 20, 20)
+            # 根据类型显示不同的数值（弧压不显示单位V）
+            if bar_type == "voltage":
+                label = f"{int(value)}"  # 只显示数值，不显示单位
+            else:
+                label = f"{int(value)}"
+            
+            label_rect = QRectF(x - 10, bar_rect.top() - 20, bar_width + 20, 18)
             painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label)
     
     # 8. 绘制X轴标签

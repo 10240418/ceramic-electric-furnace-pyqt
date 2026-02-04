@@ -32,7 +32,7 @@ class CardPowerEnergy(QFrame):
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
         
         # 标题（居中）
         self.title_label = QLabel("功率能耗")
@@ -61,8 +61,9 @@ class CardPowerEnergy(QFrame):
             power_kw: 总功率（千瓦）
             energy_kwh: 总能耗（千瓦时）
         """
-        self.power_label.setText(f"总功率 {power_kw:.1f}kW")
-        self.energy_label.setText(f"总能耗 {energy_kwh:.1f}kWh")
+        # 使用 HTML 格式，标签正常大小，数值 26px
+        self.power_label.setText(f'总功率 <span style="font-size: 26px;">{power_kw:.1f}kW</span>')
+        self.energy_label.setText(f'总能耗 <span style="font-size: 26px;">{energy_kwh:.1f}kWh</span>')
     
     # 4. 应用样式
     def apply_styles(self):

@@ -46,7 +46,7 @@ class CardElectrode(QFrame):
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
         
         # 标题（居中）
         self.title_label = QLabel(f"{self.electrode_no}#电极")
@@ -85,8 +85,10 @@ class CardElectrode(QFrame):
         # 深度转换为米（保留3位小数）
         depth_m = depth_mm / 1000.0
         self.depth_label.setText(f"深度 {depth_m:.3f}m")
-        self.current_label.setText(f"弧流 {current_a:.0f}A")
-        self.voltage_label.setText(f"弧压 {voltage_v:.0f}V")
+        
+        # 弧流和弧压使用 HTML 格式，标签正常大小，数值 26px
+        self.current_label.setText(f'弧流 <span style="font-size: 26px;">{current_a:.0f}A</span>')
+        self.voltage_label.setText(f'弧压 <span style="font-size: 26px;">{voltage_v:.0f}V</span>')
         
         # 报警检查
         phase_map = {1: 'u', 2: 'v', 3: 'w'}

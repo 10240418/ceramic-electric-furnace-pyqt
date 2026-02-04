@@ -1082,13 +1082,21 @@ def process_hopper_plc_data(
         is_discharging = False  # Q3.7 秤排料
         is_requesting = False   # Q4.0 秤要料
         if q_data and len(q_data) >= 2:
-            is_discharging = bool((q_data[0] >> 7) & 0x01)  # Q3.7
-            is_requesting = bool(q_data[1] & 0x01)          # Q4.0
+            is_discharging = bool(q_data[0] & 0x80)  # Q3.7 (0x80 = 0b10000000)
+            is_requesting = bool(q_data[1] & 0x01)   # Q4.0 (0x01 = 0b00000001)
         
         # 4. 解析 I区信号
         is_feeding_back = False  # I4.6 供料反馈
         if i_data and len(i_data) >= 1:
-            is_feeding_back = bool((i_data[0] >> 6) & 0x01)  # I4.6
+            is_feeding_back = bool(i_data[0] & 0x40)  # I4.6 (0x40 = 0b01000000)
+        
+        # 调试日志：输出信号解析结果
+        from loguru import logger
+        logger.debug(f"料仓信号解析: Q3.7={is_discharging}, Q4.0={is_requesting}, I4.6={is_feeding_back}")
+        if q_data and len(q_data) >= 2:
+            logger.debug(f"Q区原始数据: Q3=0x{q_data[0]:02X}, Q4=0x{q_data[1]:02X}")
+        if i_data and len(i_data) >= 1:
+            logger.debug(f"I区原始数据: I4=0x{i_data[0]:02X}")
         
         # 5. 判断料仓状态
         hopper_state = _determine_hopper_state(
@@ -1096,6 +1104,8 @@ def process_hopper_plc_data(
             is_requesting=is_requesting,
             is_feeding_back=is_feeding_back
         )
+        
+        logger.debug(f"料仓状态判断结果: {hopper_state}")
         
         # 6. 更新内存缓存
         with _data_lock:

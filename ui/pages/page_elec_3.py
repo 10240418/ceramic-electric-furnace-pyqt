@@ -148,19 +148,23 @@ class PageElec3(QWidget):
         self.create_hopper_panel()
         bottom_layout.addWidget(self.hopper_card, stretch=40)
         
-        # 炉盖/炉皮冷却水容器 60%（和上方右侧对齐）
+        # 炉盖/炉皮/过滤器容器 60%（和上方右侧对齐）
         cooling_container = QWidget()
         cooling_layout = QHBoxLayout(cooling_container)
         cooling_layout.setContentsMargins(0, 0, 0, 0)
         cooling_layout.setSpacing(8)
         
-        # 炉盖模块 50%
-        self.create_cooling_cover_panel()
-        cooling_layout.addWidget(self.cooling_cover_panel, stretch=50)
-        
-        # 炉皮模块 50%
+        # 炉皮模块 37%
         self.create_cooling_shell_panel()
-        cooling_layout.addWidget(self.cooling_shell_panel, stretch=50)
+        cooling_layout.addWidget(self.cooling_shell_panel, stretch=37)
+        
+        # 炉盖模块 37%
+        self.create_cooling_cover_panel()
+        cooling_layout.addWidget(self.cooling_cover_panel, stretch=37)
+        
+        # 过滤器压差模块 26%
+        self.create_filter_panel()
+        cooling_layout.addWidget(self.filter_panel, stretch=26)
         
         bottom_layout.addWidget(cooling_container, stretch=60)
         
@@ -227,76 +231,42 @@ class PageElec3(QWidget):
         self.hopper_card = CardHopper()
         self.hopper_card.set_limit_clicked.connect(self.show_hopper_detail)
     
-    # 6. 创建炉皮冷却水面板
+    # 6. 创建炉皮冷却水面板（新布局：左对齐，3行显示）
     def create_cooling_shell_panel(self):
-        self.cooling_shell_panel = PanelTech("炉皮冷却水")
+        from ui.widgets.realtime_data.card_cooling import CardCooling
         
-        items = [
-            DataItem(
-                label="冷却水流速",
-                value="0.00",
-                unit="m³/h",
-                icon="💧"
-            ),
-            DataItem(
-                label="冷却水水压",
-                value="0.0",
-                unit="kPa",
-                icon="💦",
-                alarm_param="cooling_pressure_shell"  # 报警参数
-            ),
-            DataItem(
-                label="冷却水用量",
-                value="0.00",
-                unit="m³",
-                icon="🌊"
-            ),
-        ]
-        
-        card = CardData(items)
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(card)
-        self.cooling_shell_panel.set_content_layout(layout)
+        self.cooling_shell_panel = CardCooling(
+            title="炉皮冷却水",
+            items=[
+                {"icon": "💧", "label": "冷却水流速:", "value": "0.00", "unit": "m³/h", "alarm_param": None},
+                {"icon": "💦", "label": "冷却水水压:", "value": "0.0", "unit": "kPa", "alarm_param": "cooling_pressure_shell"},
+                {"icon": "🌊", "label": "冷却水用量:", "value": "0.00", "unit": "m³", "alarm_param": None},
+            ]
+        )
     
-    # 7. 创建炉盖冷却水面板（添加过滤器压差）
+    # 7. 创建炉盖冷却水面板（新布局：左对齐，3行显示）
     def create_cooling_cover_panel(self):
-        self.cooling_cover_panel = PanelTech("炉盖冷却水")
+        from ui.widgets.realtime_data.card_cooling import CardCooling
         
-        items = [
-            DataItem(
-                label="过滤器压差",
-                value="0.0",
-                unit="kPa",
-                icon="🔧",
-                alarm_param="filter_pressure_diff"  # 报警参数
-            ),
-            DataItem(
-                label="冷却水流速",
-                value="0.00",
-                unit="m³/h",
-                icon="💧"
-            ),
-            DataItem(
-                label="冷却水水压",
-                value="0.0",
-                unit="kPa",
-                icon="💦",
-                alarm_param="cooling_pressure_cover"  # 报警参数
-            ),
-            DataItem(
-                label="冷却水用量",
-                value="0.00",
-                unit="m³",
-                icon="🌊"
-            ),
-        ]
+        self.cooling_cover_panel = CardCooling(
+            title="炉盖冷却水",
+            items=[
+                {"icon": "💧", "label": "冷却水流速:", "value": "0.00", "unit": "m³/h", "alarm_param": None},
+                {"icon": "💦", "label": "冷却水水压:", "value": "0.0", "unit": "kPa", "alarm_param": "cooling_pressure_cover"},
+                {"icon": "🌊", "label": "冷却水用量:", "value": "0.00", "unit": "m³", "alarm_param": None},
+            ]
+        )
+    
+    # 8. 创建过滤器压差面板（新布局：左对齐，3行显示）
+    def create_filter_panel(self):
+        from ui.widgets.realtime_data.card_cooling import CardCooling
         
-        card = CardData(items)
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(card)
-        self.cooling_cover_panel.set_content_layout(layout)
+        self.filter_panel = CardCooling(
+            title="过滤器",
+            items=[
+                {"icon": "🔧", "label": "过滤器压差:", "value": "0.0", "unit": "kPa", "alarm_param": "filter_pressure_diff"},
+            ]
+        )
     
     # 8. 应用样式
     def apply_styles(self):
@@ -428,62 +398,24 @@ class PageElec3(QWidget):
                 # 过滤器压差
                 filter_diff = pressure_diff.get('value', 0.0) if isinstance(pressure_diff, dict) else 0.0
                 
-                # 更新炉皮冷却水卡片（添加报警检查）
-                shell_items = [
-                    DataItem(
-                        label="冷却水流速",
-                        value=f"{self.mock_data['cooling_shell']['flow']:.2f}",
-                        unit="m³/h",
-                        icon="💧"
-                        # 不检查流速报警
-                    ),
-                    DataItem(
-                        label="冷却水水压",
-                        value=f"{self.mock_data['cooling_shell']['pressure']:.1f}",
-                        unit="kPa",
-                        icon="💦",
-                        alarm_param="cooling_pressure_shell"  # 报警参数
-                    ),
-                    DataItem(
-                        label="冷却水用量",
-                        value=f"{self.mock_data['cooling_shell']['total']:.2f}",
-                        unit="m³",
-                        icon="🌊"
-                    ),
-                ]
-                self.cooling_shell_panel.findChild(CardData).update_items(shell_items)
+                # 更新炉皮冷却水卡片
+                self.cooling_shell_panel.update_items([
+                    {"icon": "💧", "label": "冷却水流速:", "value": f"{self.mock_data['cooling_shell']['flow']:.2f}", "unit": "m³/h", "alarm_param": None},
+                    {"icon": "💦", "label": "冷却水水压:", "value": f"{self.mock_data['cooling_shell']['pressure']:.1f}", "unit": "kPa", "alarm_param": "cooling_pressure_shell"},
+                    {"icon": "🌊", "label": "冷却水用量:", "value": f"{self.mock_data['cooling_shell']['total']:.2f}", "unit": "m³", "alarm_param": None},
+                ])
                 
-                # 更新炉盖冷却水卡片（添加报警检查）
-                cover_items = [
-                    DataItem(
-                        label="过滤器压差",
-                        value=f"{filter_diff:.1f}",
-                        unit="kPa",
-                        icon="🔧",
-                        alarm_param="filter_pressure_diff"  # 报警参数
-                    ),
-                    DataItem(
-                        label="冷却水流速",
-                        value=f"{self.mock_data['cooling_cover']['flow']:.2f}",
-                        unit="m³/h",
-                        icon="💧"
-                        # 不检查流速报警
-                    ),
-                    DataItem(
-                        label="冷却水水压",
-                        value=f"{self.mock_data['cooling_cover']['pressure']:.1f}",
-                        unit="kPa",
-                        icon="💦",
-                        alarm_param="cooling_pressure_cover"  # 报警参数
-                    ),
-                    DataItem(
-                        label="冷却水用量",
-                        value=f"{self.mock_data['cooling_cover']['total']:.2f}",
-                        unit="m³",
-                        icon="🌊"
-                    ),
-                ]
-                self.cooling_cover_panel.findChild(CardData).update_items(cover_items)
+                # 更新炉盖冷却水卡片
+                self.cooling_cover_panel.update_items([
+                    {"icon": "💧", "label": "冷却水流速:", "value": f"{self.mock_data['cooling_cover']['flow']:.2f}", "unit": "m³/h", "alarm_param": None},
+                    {"icon": "💦", "label": "冷却水水压:", "value": f"{self.mock_data['cooling_cover']['pressure']:.1f}", "unit": "kPa", "alarm_param": "cooling_pressure_cover"},
+                    {"icon": "🌊", "label": "冷却水用量:", "value": f"{self.mock_data['cooling_cover']['total']:.2f}", "unit": "m³", "alarm_param": None},
+                ])
+                
+                # 更新过滤器压差卡片
+                self.filter_panel.update_items([
+                    {"icon": "🔧", "label": "过滤器压差:", "value": f"{filter_diff:.1f}", "unit": "kPa", "alarm_param": "filter_pressure_diff"},
+                ])
             
             # ========================================
             # 5. 更新料仓数据（每 0.5s）
