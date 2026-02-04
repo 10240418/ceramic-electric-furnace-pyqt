@@ -6,6 +6,7 @@ from .chart_bar import ChartBar
 from .dropdown_tech import DropdownTech, DropdownMultiSelect
 from .widget_time_selector import WidgetTimeSelector
 from .dialog_datetime_picker import DialogDateTimePicker
+from .page_compare import WidgetBatchCompare
 
 __all__ = [
     'ChartLine',
@@ -14,4 +15,5 @@ __all__ = [
     'DropdownMultiSelect',
     'WidgetTimeSelector',
     'DialogDateTimePicker',
+    'WidgetBatchCompare',
 ]

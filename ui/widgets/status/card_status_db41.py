@@ -215,7 +215,7 @@ class CardStatusDb41(QFrame):
             CardStatusDb41 {{
                 background: {tm.card_bg()};
                 border: 1px solid {tm.card_border()};
-                border-radius: 12px;
+                border-radius: 4px;
             }}
             
             /* 头部 */
@@ -223,8 +223,8 @@ class CardStatusDb41(QFrame):
                 background: {tm.bg_medium()};
                 border: none;
                 border-bottom: 1px solid {tm.border_medium()};
-                border-top-left-radius: 12px;
-                border-top-right-radius: 12px;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
             }}
             
             QLabel#header_icon {{

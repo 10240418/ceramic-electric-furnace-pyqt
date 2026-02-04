@@ -402,7 +402,7 @@ class CardData(QFrame):
                 border-radius: 4px;
             }}
             QFrame#dataDivider {{
-                background: {colors.BORDER_DARK};
+                background: {colors.BORDER_ACCENT};
                 border: none;
                 max-height: 1px;
             }}

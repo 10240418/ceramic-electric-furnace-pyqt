@@ -244,13 +244,13 @@ class DialogHopperDetail(QDialog):
             },
             'waiting_feed': {
                 'text': '投料状态: 排队等待上料',
-                'color': '#FFA500',  # 橙色
-                'border': '#FFA500',
+                'color': self.theme_manager.get_colors().GLOW_ORANGE,
+                'border': self.theme_manager.get_colors().GLOW_ORANGE,
             },
             'discharging': {
                 'text': '投料状态: 排料中',
-                'color': '#00FF00',  # 绿色
-                'border': '#00FF00',
+                'color': self.theme_manager.get_colors().GLOW_GREEN,
+                'border': self.theme_manager.get_colors().GLOW_GREEN,
             }
         }
         
@@ -323,28 +323,33 @@ class DialogHopperDetail(QDialog):
             y = parent_rect.y() + (parent_rect.height() - height) // 2
             self.move(x, y)
         
-        # 加载历史投料数据
-        self.load_feeding_history()
+        # 加载历史投料数据（如果失败则加载 Mock 数据）
+        # TODO: 生产环境禁用 Mock - 删除下面的 except 分支，让异常直接抛出
+        try:
+            self.load_feeding_history()
+        except Exception as e:
+            logger.warning(f"加载历史数据失败，使用 Mock 数据: {e}")
+            self.load_mock_data()  # TODO: 生产环境禁用 Mock - 删除这行
     
     # 11. 加载历史投料数据
     def load_feeding_history(self):
         """从数据库加载当前批次的历史投料数据"""
         try:
-            # 获取当前批次号（从批次服务中获取）
-            from backend.services.batch_service import get_batch_service
-            batch_service = get_batch_service()
-            batch_code = batch_service.batch_code
+            # 获取当前批次号（从数据缓存中获取）
+            batch_code = self.data_cache.get("batch_code")
             
+            # TODO: 生产环境禁用 Mock - 将下面 3 行改为: if not batch_code: return
             if not batch_code:
-                logger.warning("未获取到当前批次号，无法加载历史投料数据")
+                logger.warning("未获取到当前批次号，加载 Mock 数据")
+                self.load_mock_data()  # TODO: 生产环境禁用 Mock - 删除这行
                 return
             
             logger.info(f"开始加载批次 {batch_code} 的历史投料数据...")
             
-            # 1. 查询投料记录（详细记录，从 feeding_records measurement）
+            # 1. 查询投料记录（详细记录）
             feeding_records_data = self.history_service.query_feeding_records(
                 batch_code=batch_code,
-                limit=1000
+                limit=300
             )
             
             if feeding_records_data:
@@ -353,12 +358,16 @@ class DialogHopperDetail(QDialog):
                 # 转换为前端需要的格式
                 records = []
                 for record in feeding_records_data:
-                    # 将 UTC 时间转换为北京时间（UTC+8）
-                    utc_time = datetime.fromisoformat(record['time'])
-                    if utc_time.tzinfo is None:
-                        utc_time = utc_time.replace(tzinfo=timezone.utc)
+                    # query_feeding_records 返回的 time 是北京时间字符串
+                    time_str = record['time']
                     
-                    beijing_time = utc_time.astimezone(timezone(timedelta(hours=8)))
+                    # 解析时间字符串
+                    from dateutil import parser
+                    beijing_time = parser.isoparse(time_str)
+                    
+                    # 去掉时区信息（保持北京时间）
+                    if beijing_time.tzinfo is not None:
+                        beijing_time = beijing_time.replace(tzinfo=None)
                     
                     records.append({
                         'timestamp': beijing_time,
@@ -387,6 +396,10 @@ class DialogHopperDetail(QDialog):
                     
                     # 转换为北京时间（UTC+8）
                     beijing_time = utc_time.astimezone(timezone(timedelta(hours=8)))
+                    
+                    # 去掉时区信息（保持北京时间）
+                    beijing_time = beijing_time.replace(tzinfo=None)
+                    
                     timestamps.append(beijing_time)
                     cumulative_values.append(d['value'])
                 
@@ -395,10 +408,65 @@ class DialogHopperDetail(QDialog):
             else:
                 logger.warning(f"批次 {batch_code} 没有投料累计数据")
             
+            # TODO: 生产环境禁用 Mock - 删除下面 3 行，没有数据时显示空白
+            # 如果没有任何数据，加载 Mock 数据
+            if not feeding_records_data and not feeding_total_data:
+                logger.warning("没有查询到任何投料数据，加载 Mock 数据")
+                self.load_mock_data()  # TODO: 生产环境禁用 Mock - 删除这行
+            
         except Exception as e:
             logger.error(f"加载历史投料数据失败: {e}", exc_info=True)
+            raise  # 重新抛出异常，让 showEvent 捕获并加载 Mock 数据
     
-    # 12. 应用样式
+    # 12. 加载 Mock 数据
+    # TODO: 生产环境禁用 Mock - 删除整个 load_mock_data() 方法
+    def load_mock_data(self):
+        """加载 Mock 数据用于 UI 测试"""
+        logger.info("加载 Mock 投料数据...")
+        
+        # 生成 Mock 投料记录（20 条）
+        base_time = datetime.now()
+        mock_records = []
+        
+        # 投料重量范围：150-220 kg
+        import random
+        for i in range(20):
+            # 每条记录间隔 5-10 分钟
+            record_time = base_time - timedelta(minutes=random.randint(5, 10) * i)
+            weight = random.uniform(150.0, 220.0)
+            mock_records.append({
+                'timestamp': record_time,
+                'weight': weight
+            })
+        
+        # 反转列表，让最早的记录在前面
+        mock_records.reverse()
+        
+        # 更新投料记录表
+        self.set_feeding_records(mock_records)
+        
+        # 生成 Mock 投料累计曲线数据（50 个点）
+        timestamps = []
+        cumulative_values = []
+        cumulative = 0.0
+        
+        start_time = base_time - timedelta(hours=8)  # 8 小时前开始
+        
+        for i in range(50):
+            # 每个点间隔约 10 分钟
+            timestamp = start_time + timedelta(minutes=10 * i)
+            # 每次增加 150-220 kg
+            cumulative += random.uniform(150.0, 220.0)
+            
+            timestamps.append(timestamp)
+            cumulative_values.append(cumulative)
+        
+        # 更新投料累计曲线
+        self.feeding_stats_chart.set_data(timestamps, cumulative_values)
+        
+        logger.info(f"Mock 数据加载完成：{len(mock_records)} 条记录，{len(timestamps)} 个累计数据点")
+    
+    # 13. 应用样式
     def apply_styles(self):
         colors = self.theme_manager.get_colors()
         

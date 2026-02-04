@@ -55,19 +55,19 @@ class CardElectrode(QFrame):
         layout.addWidget(self.title_label)
         
         # 深度（左对齐）
-        self.depth_label = QLabel("深度 0.000m")
+        self.depth_label = QLabel("深度: 0.000m")
         self.depth_label.setObjectName(f"depth_{self.electrode_no}")
         self.depth_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.depth_label)
         
         # 弧流（左对齐）
-        self.current_label = QLabel("弧流 0A")
+        self.current_label = QLabel("弧流: 0A")
         self.current_label.setObjectName(f"current_{self.electrode_no}")
         self.current_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.current_label)
         
         # 弧压（左对齐）
-        self.voltage_label = QLabel("弧压 0V")
+        self.voltage_label = QLabel("弧压: 0V")
         self.voltage_label.setObjectName(f"voltage_{self.electrode_no}")
         self.voltage_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.voltage_label)
@@ -84,11 +84,11 @@ class CardElectrode(QFrame):
         """
         # 深度转换为米（保留3位小数）
         depth_m = depth_mm / 1000.0
-        self.depth_label.setText(f"深度 {depth_m:.3f}m")
+        self.depth_label.setText(f"深度: {depth_m:.3f}m")
         
         # 弧流和弧压使用 HTML 格式，标签正常大小，数值 26px
-        self.current_label.setText(f'弧流 <span style="font-size: 26px;">{current_a:.0f}A</span>')
-        self.voltage_label.setText(f'弧压 <span style="font-size: 26px;">{voltage_v:.0f}V</span>')
+        self.current_label.setText(f'弧流: <span style="font-size: 26px;">{current_a:.0f}A</span>')
+        self.voltage_label.setText(f'弧压: <span style="font-size: 26px;">{voltage_v:.0f}V</span>')
         
         # 报警检查
         phase_map = {1: 'u', 2: 'v', 3: 'w'}

@@ -112,12 +112,12 @@ class MainWindow(QMainWindow):
         # 隐藏系统标题栏，使用自定义工具栏
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         
-        # 设置窗口大小为 19 寸 4:3 标准分辨率 (1280x1024)
-        self.resize(1280, 1024)
+        # 设置窗口大小为 19 寸 4:3 标准分辨率 (1260x1004, 减小20px)
+        self.resize(1260, 1004)
         
         # 设置最小和最大尺寸，固定窗口大小
-        self.setMinimumSize(1280, 1024)
-        self.setMaximumSize(1280, 1024)
+        self.setMinimumSize(1260, 1004)
+        self.setMaximumSize(1260, 1004)
         
         # 窗口居中显示
         self.center_window()
@@ -223,8 +223,8 @@ class MainWindow(QMainWindow):
         if self.isFullScreen():
             # 退出全屏，恢复固定大小
             self.showNormal()
-            self.setMinimumSize(1280, 1024)
-            self.setMaximumSize(1280, 1024)
+            self.setMinimumSize(1260, 1004)
+            self.setMaximumSize(1260, 1004)
             self.center_window()
         else:
             # 进入全屏，取消尺寸限制

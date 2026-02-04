@@ -133,8 +133,8 @@ class QSSStyles:
         }}
         
         QPushButton[danger="true"]:hover {{
-            background-color: #ff5544;
-            border: 1px solid #ff5544;
+            background-color: {self.theme.get_color('BUTTON_DANGER_HOVER')};
+            border: 1px solid {self.theme.get_color('BUTTON_DANGER_HOVER')};
         }}
         """
     

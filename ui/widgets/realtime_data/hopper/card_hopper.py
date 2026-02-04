@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QScrollArea, QSizePolicy, QWidget, QScroller
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QTimer, QPoint, QTime
 from ui.styles.themes import ThemeManager
 from datetime import datetime
 
@@ -33,6 +33,10 @@ class CardHopper(QFrame):
         
         # 上一次的投料累计值（用于检测变化）
         self.last_feeding_total = 0.0
+        
+        # 单击检测
+        self.mouse_press_pos = None
+        self.mouse_press_time = None
         
         self.init_ui()
         self.apply_styles()
@@ -68,12 +72,12 @@ class CardHopper(QFrame):
         layout.setSizeConstraint(QVBoxLayout.SizeConstraint.SetMinAndMaxSize)
         
         # 滚动区域
-        scroll_area = QScrollArea()
-        scroll_area.setObjectName("scrollArea")
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setObjectName("scrollArea")
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
         # 记录容器
         self.records_container = QWidget()
@@ -84,9 +88,13 @@ class CardHopper(QFrame):
         self.records_layout.setSpacing(0)
         self.records_layout.addStretch()
         
-        scroll_area.setWidget(self.records_container)
-        QScroller.grabGesture(scroll_area.viewport(), QScroller.ScrollerGestureType.LeftMouseButtonGesture)
-        layout.addWidget(scroll_area, stretch=1)
+        self.scroll_area.setWidget(self.records_container)
+        QScroller.grabGesture(self.scroll_area.viewport(), QScroller.ScrollerGestureType.LeftMouseButtonGesture)
+        
+        # 安装事件过滤器到 viewport，用于检测单击事件
+        self.scroll_area.viewport().installEventFilter(self)
+        
+        layout.addWidget(self.scroll_area, stretch=1)
     
     # 4. 创建右侧面板（数据面板）
     def create_right_panel(self):
@@ -256,13 +264,13 @@ class CardHopper(QFrame):
         }
         self.status_value_label.setText(state_text_map.get(state, '静止'))
         
-        # 根据状态设置颜色
+        # 根据状态设置颜色（使用主题变量）
         colors = self.theme_manager.get_colors()
         state_color_map = {
             'idle': colors.TEXT_PRIMARY,
             'feeding': colors.GLOW_PRIMARY,
-            'waiting_feed': '#FFA500',
-            'discharging': '#00FF00'
+            'waiting_feed': colors.GLOW_ORANGE,
+            'discharging': colors.GLOW_GREEN
         }
         self.status_value_label.setStyleSheet(f"""
             QLabel#statusValue {{
@@ -493,7 +501,7 @@ class CardHopper(QFrame):
             }}
             
             QFrame#divider {{
-                background: {colors.BORDER_DARK};
+                background: {colors.BORDER_ACCENT};
                 border: none;
                 margin: 10px 0px;
             }}
@@ -501,27 +509,27 @@ class CardHopper(QFrame):
             QFrame#dataBlock {{
                 background: transparent;
                 border: none;
-                border-bottom: 1px solid {colors.BORDER_DARK};
+                border-bottom: 1px solid {colors.BORDER_ACCENT};
                 border-radius: 0px;
             }}
             
             QFrame#upperLimitBlock {{
                 background: transparent;
                 border: none;
-                border-bottom: 1px solid {colors.BORDER_DARK};
+                border-bottom: 1px solid {colors.BORDER_ACCENT};
                 border-radius: 0px;
             }}
             
             QFrame#statusBlock {{
                 background: transparent;
                 border: none;
-                border-bottom: 1px solid {colors.BORDER_DARK};
+                border-bottom: 1px solid {colors.BORDER_ACCENT};
                 border-radius: 0px;
             }}
             
             QLabel#blockLabel {{
                 color: {colors.TEXT_PRIMARY};
-                font-size: 14px;
+                font-size: 16px;
                 border: none;
                 background: transparent;
             }}
@@ -578,7 +586,7 @@ class CardHopper(QFrame):
             }}
             
             QLabel#recordDate {{
-                color: {colors.TEXT_SECONDARY};
+                color: {colors.TEXT_PRIMARY};
                 font-size: 14px;
                 font-weight: 600;
                 border: none;
@@ -587,7 +595,7 @@ class CardHopper(QFrame):
             }}
             
             QLabel#recordTime {{
-                color: {colors.TEXT_SECONDARY};
+                color: {colors.TEXT_PRIMARY};
                 font-size: 14px;
                 font-weight: 600;
                 border: none;
@@ -652,3 +660,111 @@ class CardHopper(QFrame):
     # 18. 主题变化时重新应用样式
     def on_theme_changed(self):
         self.apply_styles()
+        # 强制刷新所有投料记录的颜色
+        self._refresh_record_colors()
+    
+    # 19. 强制刷新投料记录颜色
+    def _refresh_record_colors(self):
+        """强制刷新所有投料记录的日期和时间颜色"""
+        colors = self.theme_manager.get_colors()
+        
+        # 查找所有记录项中的日期和时间标签
+        for record_item in self.records_container.findChildren(QFrame):
+            if record_item.objectName() == "recordItem":
+                for label in record_item.findChildren(QLabel):
+                    obj_name = label.objectName()
+                    if obj_name == "recordDate" or obj_name == "recordTime":
+                        label.setStyleSheet(f"""
+                            QLabel {{
+                                color: {colors.TEXT_PRIMARY};
+                                font-size: 14px;
+                                font-weight: 600;
+                                border: none;
+                                background: transparent;
+                                padding: 0px;
+                            }}
+                        """)
+                    elif obj_name == "recordWeightValue":
+                        label.setStyleSheet(f"""
+                            QLabel {{
+                                color: {colors.TEXT_PRIMARY};
+                                font-size: 20px;
+                                font-weight: bold;
+                                font-family: "Roboto Mono";
+                                border: none;
+                                background: transparent;
+                            }}
+                        """)
+                    elif obj_name == "recordUnit":
+                        label.setStyleSheet(f"""
+                            QLabel {{
+                                color: {colors.TEXT_PRIMARY};
+                                font-size: 18px;
+                                font-weight: bold;
+                                border: none;
+                                background: transparent;
+                            }}
+                        """)
+    
+    # 20. 事件过滤器（检测单击事件）
+    def eventFilter(self, obj, event):
+        """事件过滤器，用于检测滚动区域的单击事件"""
+        if obj == self.scroll_area.viewport():
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    self.mouse_press_pos = event.pos()
+                    self.mouse_press_time = QTime.currentTime()
+                    return False
+            
+            elif event.type() == QEvent.Type.MouseButtonRelease:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    if self.mouse_press_pos and self.mouse_press_time:
+                        # 检查是否是单击（移动距离小于5像素，且时间小于300ms）
+                        move_distance = (event.pos() - self.mouse_press_pos).manhattanLength()
+                        elapsed_time = self.mouse_press_time.msecsTo(QTime.currentTime())
+                        
+                        if move_distance < 5 and elapsed_time < 300:
+                            # 单击事件，打开详情弹窗
+                            from loguru import logger
+                            logger.info("检测到单击事件，打开料仓详情弹窗")
+                            self.open_detail_dialog()
+                        
+                        self.mouse_press_pos = None
+                        self.mouse_press_time = None
+                    return False
+        
+        return super().eventFilter(obj, event)
+    
+    # 21. 打开详情弹窗
+    def open_detail_dialog(self):
+        """打开投料详情弹窗 - 使用延迟调用避免事件冲突"""
+        # 使用 QTimer.singleShot 延迟打开，让当前事件处理完成
+        QTimer.singleShot(50, self._do_open_detail_dialog)
+    
+    # 21.1 实际打开弹窗
+    def _do_open_detail_dialog(self):
+        """实际打开弹窗的方法"""
+        from .dialog_hopper_detail import DialogHopperDetail
+        
+        dialog = DialogHopperDetail(self.window())
+        
+        # 更新弹窗数据
+        dialog.update_data(
+            feeding_total=self.feeding_total,
+            hopper_weight=self.hopper_weight,
+            upper_limit=self.upper_limit,
+            state=self.state
+        )
+        
+        # 连接料仓上限设置信号
+        dialog.upper_limit_set.connect(self.on_detail_limit_set)
+        
+        dialog.exec()
+    
+    # 22. 详情弹窗中设置了料仓上限
+    def on_detail_limit_set(self, limit: float):
+        """详情弹窗中设置了料仓上限，更新主卡片显示"""
+        self.upper_limit = limit
+        value_label = self.upper_limit_block.findChild(QLabel, "blockValue")
+        if value_label:
+            value_label.setText(str(int(limit)))

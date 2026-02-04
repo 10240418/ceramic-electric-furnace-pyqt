@@ -121,12 +121,12 @@ class DialogMessage(QDialog):
     def apply_styles(self):
         colors = self.theme_manager.get_colors()
         
-        # 根据类型选择颜色
+        # 根据类型选择颜色（使用主题变量）
         type_colors = {
-            "error": "#ff4444",
-            "warning": "#ffaa00",
+            "error": colors.STATUS_ERROR,
+            "warning": colors.STATUS_WARNING,
             "info": colors.GLOW_PRIMARY,
-            "success": "#00cc66"
+            "success": colors.STATUS_SUCCESS
         }
         accent_color = type_colors.get(self.dialog_type, colors.GLOW_PRIMARY)
         

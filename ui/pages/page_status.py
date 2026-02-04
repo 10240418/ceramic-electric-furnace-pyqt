@@ -94,7 +94,11 @@ class PageStatus(QWidget):
             
             QScrollArea {{
                 border: none;
-                background: transparent;
+                background: {tm.bg_deep()};
+            }}
+            
+            QWidget {{
+                background: {tm.bg_deep()};
             }}
             
             QScrollBar:vertical {{

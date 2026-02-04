@@ -15,7 +15,7 @@ class ValveLayoutProfile:
     left_spacing: int = -14
     gauge_weight: int = 92
     bottom_ratio: int = 8
-    bottom_background: str | None = "#B0B0B0"
+    bottom_background: str | None = None  # 使用时从主题获取颜色
     gauge_center_multiplier: float = 0.82
     gauge_center_offset: float = 8.0
     radius_multiplier: float = 0.45
@@ -179,15 +179,12 @@ class IndicatorValve(QFrame):
                 }}
             """
         else:
-            # 非激活状态：普通样式（深色主题使用更明显的边框）
-            text_color = colors.TEXT_SECONDARY if self.theme_manager.is_dark_mode() else colors.TEXT_SECONDARY
-            # 深色模式下使用更亮的边框，浅色模式下使用暗色边框
-            border_color = colors.BORDER_MEDIUM if self.theme_manager.is_dark_mode() else colors.BORDER_DARK
+            # 非激活状态：普通样式
             return f"""
                 QLabel#statusBtn {{
                     background: transparent;
-                    color: {text_color};
-                    border: 1px solid {border_color};
+                    color: {colors.TEXT_PRIMARY};
+                    border: 1px solid {colors.BORDER_MEDIUM};
                     border-radius: 0px;
                     padding: 0px;
                     font-weight: normal;

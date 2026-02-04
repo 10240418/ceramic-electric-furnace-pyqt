@@ -115,23 +115,12 @@ def main():
         tray_icon.show()
         logger.info("✅ 系统托盘已创建")
         
-        # 设置窗口大小为19寸4:3分辨率（1280x1024）
-        window.resize(1280, 1024)
-        
-        # 窗口居中显示
-        from PyQt6.QtGui import QScreen
-        screen = app.primaryScreen().geometry()
-        window_geometry = window.frameGeometry()
-        center_point = screen.center()
-        window_geometry.moveCenter(center_point)
-        window.move(window_geometry.topLeft())
-        
-        # 显示窗口（窗口模式）
-        window.show()
+        # 显示窗口（全屏模式）
+        window.showFullScreen()
         logger.info("✅ 主窗口已创建并显示")
         logger.info("📐 窗口功能：")
-        logger.info("   • 窗口大小：1280x1024 (19寸 4:3)")
-        logger.info("   • 启动模式：窗口模式（居中显示）")
+        logger.info("   • 窗口大小：1260x1004 (固定尺寸)")
+        logger.info("   • 启动模式：全屏模式")
         logger.info("   • 最小化：点击工具栏按钮")
         logger.info("   • 切换全屏：F11 或工具栏按钮")
         logger.info("   • 退出程序：Esc 或 Alt+F4")
@@ -150,7 +139,9 @@ def main():
         sys.exit(1)
     
     except Exception as e:
-        logger.error(f" 启动失败: {e}", exc_info=True)
+        import traceback
+        logger.error(f" 启动失败: {e}")
+        logger.error(f"完整错误堆栈:\n{traceback.format_exc()}")
         sys.exit(1)
 
 

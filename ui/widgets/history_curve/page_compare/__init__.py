@@ -2,5 +2,8 @@
 历史轮次对比模式专用组件
 用于存放点击"历史轮次查询"按钮后显示的页面中使用的组件
 """
+from .widget_batch_compare import WidgetBatchCompare
 
-__all__ = []
+__all__ = [
+    'WidgetBatchCompare',
+]

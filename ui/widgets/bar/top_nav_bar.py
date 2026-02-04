@@ -286,15 +286,15 @@ class TopNavBar(QFrame):
         tm = self.theme_manager
         
         if is_ok:
-            # 正常：绿色边框和文字
+            # 正常：深色主题用青蓝色，浅色主题用绿色
             widget.setStyleSheet(f"""
                 QWidget {{
                     background: transparent;
-                    border: 1px solid {tm.status_normal()};
+                    border: 1px solid {tm.status_info()};
                     border-radius: 4px;
                 }}
                 QLabel {{
-                    color: {tm.status_normal()};
+                    color: {tm.status_info()};
                     background: transparent;
                     border: none;
                 }}
@@ -388,8 +388,8 @@ class TopNavBar(QFrame):
             }}
             
             QPushButton#btn_exit:hover {{
-                background: #ff5544;
-                border: 1px solid #ff5544;
+                background: {tm.get_color('BUTTON_DANGER_HOVER')};
+                border: 1px solid {tm.get_color('BUTTON_DANGER_HOVER')};
             }}
             
             /* 设置按钮 */

@@ -47,9 +47,9 @@ class CardCooling(QFrame):
         # 标题栏
         title_widget = QWidget()
         title_widget.setObjectName("titleBar")
-        title_widget.setFixedHeight(48)  # 增加标题栏高度：40px -> 48px
+        title_widget.setFixedHeight(52)  # 增加标题栏高度：48px -> 52px (上下各+2px)
         title_layout = QHBoxLayout(title_widget)
-        title_layout.setContentsMargins(12, 0, 12, 0)
+        title_layout.setContentsMargins(12, 2, 12, 2)  # 增加上下边距：0 -> 2px
         title_layout.setSpacing(0)
         
         title_label = QLabel(self.title)
@@ -151,7 +151,7 @@ class CardCooling(QFrame):
         label_widget.setStyleSheet(f"""
             QLabel {{
                 color: {colors.TEXT_PRIMARY};
-                font-size: 14px;
+                font-size: 16px;
                 border: none;
                 background: transparent;
             }}
@@ -341,12 +341,43 @@ class CardCooling(QFrame):
             if is_alarm:
                 value_color = colors.STATUS_ALARM
                 unit_color = colors.STATUS_ALARM
+                icon_color = colors.STATUS_ALARM
             elif is_warning:
                 value_color = colors.STATUS_WARNING
                 unit_color = colors.STATUS_WARNING
+                icon_color = colors.STATUS_WARNING
             else:
                 value_color = colors.GLOW_PRIMARY
                 unit_color = colors.TEXT_PRIMARY
+                icon_color = colors.TEXT_PRIMARY
+            
+            # 更新图标和标签颜色（主题变化时需要更新）
+            all_labels = item_widget.findChildren(QLabel)
+            for label in all_labels:
+                # 跳过 LabelBlinkingFade 类型（单独处理）
+                if isinstance(label, LabelBlinkingFade):
+                    continue
+                text = label.text()
+                # 图标（emoji）
+                if text in ["💧", "💦", "🌊", "🔧"]:
+                    label.setStyleSheet(f"""
+                        QLabel {{
+                            color: {icon_color};
+                            font-size: 16px;
+                            border: none;
+                            background: transparent;
+                        }}
+                    """)
+                # 标签文字
+                elif ":" in text or "冷却水" in text or "过滤器" in text:
+                    label.setStyleSheet(f"""
+                        QLabel {{
+                            color: {colors.TEXT_PRIMARY};
+                            font-size: 16px;
+                            border: none;
+                            background: transparent;
+                        }}
+                    """)
             
             # 查找并更新数值和单位标签（数值和单位在同一行）
             blinking_labels = item_widget.findChildren(LabelBlinkingFade)
@@ -416,14 +447,14 @@ class CardCooling(QFrame):
                 border: none;
             }}
             QFrame#titleDivider {{
-                background: {colors.BORDER_DARK};
+                background: {colors.BORDER_ACCENT};
                 border: none;
                 max-height: 1px;
                 min-height: 1px;
             }}
             QLabel#titleLabel {{
                 color: {colors.TEXT_PRIMARY};
-                font-size: 17px;
+                font-size: 22px;
                 font-weight: bold;
                 border: none;
                 background: transparent;
@@ -433,7 +464,7 @@ class CardCooling(QFrame):
                 border: none;
             }}
             QFrame#dataDivider {{
-                background: {colors.BORDER_DARK};
+                background: {colors.BORDER_ACCENT};
                 border: none;
                 max-height: 1px;
                 min-height: 1px;

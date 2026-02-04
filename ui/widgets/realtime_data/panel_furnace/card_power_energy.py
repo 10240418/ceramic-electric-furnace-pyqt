@@ -41,13 +41,13 @@ class CardPowerEnergy(QFrame):
         layout.addWidget(self.title_label)
         
         # 总功率（左对齐）
-        self.power_label = QLabel("总功率 0.0kW")
+        self.power_label = QLabel("总功率: 0.0kW")
         self.power_label.setObjectName("power_label")
         self.power_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.power_label)
         
         # 总能耗（左对齐）
-        self.energy_label = QLabel("总能耗 0.0kWh")
+        self.energy_label = QLabel("总能耗: 0.0kWh")
         self.energy_label.setObjectName("energy_label")
         self.energy_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.energy_label)
@@ -62,8 +62,8 @@ class CardPowerEnergy(QFrame):
             energy_kwh: 总能耗（千瓦时）
         """
         # 使用 HTML 格式，标签正常大小，数值 26px
-        self.power_label.setText(f'总功率 <span style="font-size: 26px;">{power_kw:.1f}kW</span>')
-        self.energy_label.setText(f'总能耗 <span style="font-size: 26px;">{energy_kwh:.1f}kWh</span>')
+        self.power_label.setText(f'总功率: <span style="font-size: 26px;">{power_kw:.1f}kW</span>')
+        self.energy_label.setText(f'总能耗: <span style="font-size: 26px;">{energy_kwh:.1f}kWh</span>')
     
     # 4. 应用样式
     def apply_styles(self):
@@ -83,13 +83,13 @@ class CardPowerEnergy(QFrame):
             }}
             
             QLabel#power_label {{
-                color: {colors.GLOW_ORANGE};
+                color: {colors.GLOW_PRIMARY};
                 font-size: 16px;
                 font-weight: bold;
             }}
             
             QLabel#energy_label {{
-                color: {colors.GLOW_YELLOW};
+                color: {colors.GLOW_PRIMARY};
                 font-size: 16px;
                 font-weight: bold;
             }}

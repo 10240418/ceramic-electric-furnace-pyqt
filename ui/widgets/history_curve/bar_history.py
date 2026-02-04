@@ -18,6 +18,7 @@ class BarHistory(QWidget):
     batches_changed = pyqtSignal(list)
     time_range_changed = pyqtSignal(QDateTime, QDateTime)
     query_clicked = pyqtSignal()  # 查询按钮点击信号
+    export_clicked = pyqtSignal()  # 导出按钮点击信号
     batch_time_range_loaded = pyqtSignal(str, object, object)  # 批次时间范围加载完成信号 (batch_code, start_time, end_time)
     
     # 1. 初始化组件
@@ -35,6 +36,9 @@ class BarHistory(QWidget):
         self.batch_start_time = None
         self.batch_end_time = None
         self.batch_duration_hours = 0.0
+        
+        # Mock 模式标志
+        self.use_mock = False
         
         self.history_service = get_history_query_service()
         
@@ -88,42 +92,71 @@ class BarHistory(QWidget):
         self.query_btn.clicked.connect(self.on_query_clicked)
         layout.addWidget(self.query_btn)
         
+        # 导出按钮
+        self.export_btn = QPushButton("导出数据")
+        self.export_btn.setFixedHeight(32)
+        self.export_btn.setFixedWidth(100)
+        self.export_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.export_btn.clicked.connect(self.on_export_clicked)
+        layout.addWidget(self.export_btn)
+        
         layout.addStretch()
     
     # 3. 加载批次列表
-    def load_batch_list(self):
-        """从数据库加载批次列表"""
+    def load_batch_list(self, use_mock: bool = False):
+        """从数据库加载批次列表（支持Mock模式）"""
         try:
             logger.info("开始加载批次列表...")
-            batches = self.history_service.get_batch_list(limit=50)
             
-            if batches:
-                self.batch_options = [b["batch_code"] for b in batches]
+            # 保存 Mock 模式标志
+            self.use_mock = use_mock
+            
+            # Mock模式：生成50个测试批次
+            if use_mock:
+                logger.info("使用Mock模式，生成50个测试批次...")
+                from datetime import datetime, timedelta
+                base_date = datetime(2026, 2, 5)
+                self.batch_options = []
+                for i in range(50):
+                    date = base_date - timedelta(days=i)
+                    batch_code = date.strftime("%Y%m%d") + f"{i % 10 + 1:02d}"
+                    self.batch_options.append(batch_code)
                 
-                # 默认选中第一个（最新的）批次
-                if self.batch_options:
-                    self.selected_batch = self.batch_options[0]
-                    self.selected_batches = [self.batch_options[0]]
-                    
-                    logger.info(f"默认选中批次: {self.selected_batch}")
+                # 默认选中前3个批次
+                self.selected_batch = self.batch_options[0]
+                self.selected_batches = self.batch_options[:3]
                 
-                # 更新下拉框
-                self.batch_dropdown.set_options(self.batch_options)
-                self.batch_dropdown.set_value(self.selected_batch)
-                
-                self.batch_multi_dropdown.set_options(self.batch_options)
-                self.batch_multi_dropdown.set_values(self.selected_batches)
-                
-                logger.info(f"成功加载 {len(self.batch_options)} 个批次")
-                
-                # 发送批次选择变化信号
-                self.batch_changed.emit(self.selected_batch)
+                logger.info(f"Mock模式：生成了 {len(self.batch_options)} 个批次")
             else:
-                logger.warning("未查询到批次数据")
-                self.batch_options = ["无数据"]
-                self.selected_batch = ""
-                self.batch_dropdown.set_options(self.batch_options)
-                self.batch_multi_dropdown.set_options(self.batch_options)
+                # 真实模式：从数据库加载
+                batches = self.history_service.get_batch_list(limit=50)
+                
+                if batches:
+                    self.batch_options = [b["batch_code"] for b in batches]
+                    
+                    # 默认选中第一个（最新的）批次
+                    if self.batch_options:
+                        self.selected_batch = self.batch_options[0]
+                        self.selected_batches = [self.batch_options[0]]
+                        
+                        logger.info(f"默认选中批次: {self.selected_batch}")
+                    
+                    logger.info(f"成功加载 {len(self.batch_options)} 个批次")
+                else:
+                    logger.warning("未查询到批次数据")
+                    self.batch_options = ["无数据"]
+                    self.selected_batch = ""
+            
+            # 更新下拉框
+            self.batch_dropdown.set_options(self.batch_options)
+            self.batch_dropdown.set_value(self.selected_batch)
+            
+            self.batch_multi_dropdown.set_options(self.batch_options)
+            self.batch_multi_dropdown.set_values(self.selected_batches)
+            
+            # 发送批次选择变化信号
+            if self.selected_batch:
+                self.batch_changed.emit(self.selected_batch)
                 
         except Exception as e:
             logger.error(f"加载批次列表失败: {e}")
@@ -170,18 +203,9 @@ class BarHistory(QWidget):
             """)
         else:
             # 未选中状态
-            is_dark = self.theme_manager.is_dark_mode()
-            
-            if is_dark:
-                bg_normal = f"{colors.BG_LIGHT}4D"
-                bg_hover = f"{colors.BG_LIGHT}80"
-            else:
-                bg_normal = colors.BG_LIGHT
-                bg_hover = colors.BG_MEDIUM
-            
             self.history_mode_btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: {bg_normal};
+                    background: {colors.BTN_BG_NORMAL};
                     color: {colors.TEXT_PRIMARY};
                     border: 1px solid {colors.BORDER_MEDIUM};
                     border-radius: 4px;
@@ -189,7 +213,7 @@ class BarHistory(QWidget):
                     font-size: 14px;
                 }}
                 QPushButton:hover {{
-                    background: {bg_hover};
+                    background: {colors.BTN_BG_HOVER};
                     border: 1px solid {colors.GLOW_CYAN};
                 }}
             """)
@@ -198,15 +222,22 @@ class BarHistory(QWidget):
     def on_batch_changed(self, batch: str):
         self.selected_batch = batch
         
-        # 查询批次时间范围
-        self.query_batch_time_range(batch)
+        # Mock 模式下不查询批次时间范围
+        if not self.use_mock:
+            # 查询批次时间范围
+            self.query_batch_time_range(batch)
         
         self.batch_changed.emit(batch)
     
     # 6.1. 查询批次时间范围
     def query_batch_time_range(self, batch_code: str):
-        """查询批次的时间范围，并更新时间选择器"""
+        """查询批次的时间范围，并更新时间选择器（Mock模式下跳过）"""
         if not batch_code or batch_code in ["无数据", "加载失败"]:
+            return
+        
+        # Mock 模式下跳过查询
+        if self.use_mock:
+            logger.info(f"Mock模式：跳过批次 {batch_code} 的时间范围查询")
             return
         
         try:
@@ -254,6 +285,11 @@ class BarHistory(QWidget):
         logger.info(f"点击查询按钮 - 批次: {self.selected_batch}, 时间范围: {self.time_selector.get_time_range()}")
         self.query_clicked.emit()
     
+    # 9.1. 导出按钮点击
+    def on_export_clicked(self):
+        logger.info(f"点击导出按钮 - 批次: {self.selected_batch}")
+        self.export_clicked.emit()
+    
     # 10. 获取当前模式
     def get_mode(self) -> bool:
         return self.is_history_mode
@@ -298,6 +334,7 @@ class BarHistory(QWidget):
         
         self.update_history_mode_button()
         self.update_query_button()
+        self.update_export_button()
     
     # 16. 更新查询按钮样式
     def update_query_button(self):
@@ -319,6 +356,29 @@ class BarHistory(QWidget):
             }}
             QPushButton:pressed {{
                 background: {colors.GLOW_CYAN}99;
+            }}
+        """)
+    
+    # 16.1. 更新导出按钮样式
+    def update_export_button(self):
+        colors = self.theme_manager.get_colors()
+        # 导出按钮：次要按钮样式
+        self.export_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {colors.BTN_BG_NORMAL};
+                color: {colors.TEXT_PRIMARY};
+                border: 1px solid {colors.BORDER_MEDIUM};
+                border-radius: 4px;
+                padding: 6px 16px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {colors.BTN_BG_HOVER};
+                border: 1px solid {colors.GLOW_CYAN};
+            }}
+            QPushButton:pressed {{
+                background: {colors.BG_MEDIUM};
             }}
         """)
     

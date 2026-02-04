@@ -36,19 +36,11 @@ class ButtonExport(QPushButton):
     # 3. 应用样式
     def apply_styles(self):
         colors = self.theme_manager.get_colors()
-        is_dark = self.theme_manager.is_dark_mode()
         
-        # 与下拉框保持一致的样式
-        if is_dark:
-            bg_normal = f"{colors.BG_LIGHT}4D"
-            bg_hover = f"{colors.BG_LIGHT}80"
-        else:
-            bg_normal = colors.BG_LIGHT  # 白色
-            bg_hover = colors.BG_MEDIUM  # 米白色
-        
+        # 与下拉框保持一致的样式（使用主题变量）
         self.setStyleSheet(f"""
             QPushButton {{
-                background: {bg_normal};
+                background: {colors.BTN_BG_NORMAL};
                 color: {colors.TEXT_PRIMARY};
                 border: 1px solid {colors.BORDER_MEDIUM};
                 border-radius: 4px;
@@ -57,7 +49,7 @@ class ButtonExport(QPushButton):
                 font-weight: 600;
             }}
             QPushButton:hover {{
-                background: {bg_hover};
+                background: {colors.BTN_BG_HOVER};
                 border: 1px solid {self.accent_color};
             }}
             QPushButton:pressed {{
