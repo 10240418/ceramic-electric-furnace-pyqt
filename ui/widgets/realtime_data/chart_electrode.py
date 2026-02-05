@@ -34,9 +34,12 @@ class ChartElectrode(QWidget):
         
         # 标记是否已接收到真实数据
         self._has_real_data = False
+        
+        # 上一次有效的弧压值（用于过滤0值）
+        self._last_valid_voltages = {'U': 0.0, 'V': 0.0, 'W': 0.0}
 
         # 刷新间隔（毫秒）- 跟随轮询速度
-        self._refresh_interval_ms = 200  # 默认 200ms (0.2s)
+        self._refresh_interval_ms = 500  # 默认 500ms (0.5s)
 
         # 节流优化：缓存最新数据，定时更新UI
         self._pending_update = False
@@ -137,7 +140,7 @@ class ChartElectrode(QWidget):
         
         # 上限标题
         upper_title = QLabel("上限")
-        upper_title.setObjectName("sectionTitle")
+        upper_title.setObjectName("upperTitle")
         upper_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         font = QFont("Microsoft YaHei", 13)
         font.setBold(True)
@@ -175,7 +178,7 @@ class ChartElectrode(QWidget):
         
         # 下限标题
         lower_title = QLabel("下限")
-        lower_title.setObjectName("sectionTitle")
+        lower_title.setObjectName("lowerTitle")
         lower_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         font = QFont("Microsoft YaHei", 13)
         font.setBold(True)
@@ -297,6 +300,18 @@ class ChartElectrode(QWidget):
         if arc_current or arc_voltage or setpoints:
             self._has_real_data = True
         
+        # 处理弧压数据：如果为0，使用上一次有效值
+        processed_voltage = {}
+        for phase in ['U', 'V', 'W']:
+            voltage = arc_voltage.get(phase, 0)
+            if voltage > 0:
+                # 有效值，更新缓存
+                self._last_valid_voltages[phase] = voltage
+                processed_voltage[phase] = voltage
+            else:
+                # 0值，使用上一次有效值
+                processed_voltage[phase] = self._last_valid_voltages[phase]
+        
         # 构建电极数据列表
         # 如果数据为空或设定值为0，则使用0作为默认值
         electrodes = [
@@ -304,19 +319,19 @@ class ChartElectrode(QWidget):
                 "1#电极", 
                 setpoints.get('U', 0),
                 arc_current.get('U', 0), 
-                arc_voltage.get('U', 0)
+                processed_voltage.get('U', 0)
             ),
             ElectrodeData(
                 "2#电极", 
                 setpoints.get('V', 0),
                 arc_current.get('V', 0), 
-                arc_voltage.get('V', 0)
+                processed_voltage.get('V', 0)
             ),
             ElectrodeData(
                 "3#电极", 
                 setpoints.get('W', 0),
                 arc_current.get('W', 0), 
-                arc_voltage.get('W', 0)
+                processed_voltage.get('W', 0)
             ),
         ]
         
@@ -386,23 +401,35 @@ class ChartElectrode(QWidget):
                 }}
             """)
 
-        # 章节标题（上限/下限）
-        section_titles = self.data_panel.findChildren(QLabel, "sectionTitle")
-        for title in section_titles:
-            title.setStyleSheet(f"""
+        # 上限标题颜色（固定橙红色 #FF6A45）
+        upper_title = self.data_panel.findChild(QLabel, "upperTitle")
+        if upper_title:
+            upper_title.setStyleSheet(f"""
                 QLabel {{
-                    color: {colors.TEXT_PRIMARY};
+                    color: #FF6A45;
+                    background: transparent;
+                    border: none;
+                    padding: 2px 0px 0px 0px;
+                }}
+            """)
+        
+        # 下限标题颜色（固定蓝色 #45B1FF）
+        lower_title = self.data_panel.findChild(QLabel, "lowerTitle")
+        if lower_title:
+            lower_title.setStyleSheet(f"""
+                QLabel {{
+                    color: #45B1FF;
                     background: transparent;
                     border: none;
                     padding: 2px 0px 0px 0px;
                 }}
             """)
 
-        # 上限标签颜色（使用主题配色，字体 18px 不加粗）
+        # 上限标签颜色（固定橙红色 #FF6A45，字体 18px 不加粗）
         for label in self.upper_labels:
             label.setStyleSheet(f"""
                 QLabel {{
-                    color: {colors.TEXT_PRIMARY};
+                    color: #FF6A45;
                     background: transparent;
                     border: none;
                     padding: 2px 0px 0px 0px;
@@ -410,11 +437,11 @@ class ChartElectrode(QWidget):
                 }}
             """)
 
-        # 下限标签颜色（使用主题配色，字体 18px 不加粗）
+        # 下限标签颜色（固定蓝色 #45B1FF，字体 18px 不加粗）
         for label in self.lower_labels:
             label.setStyleSheet(f"""
                 QLabel {{
-                    color: {colors.TEXT_PRIMARY};
+                    color: #45B1FF;
                     background: transparent;
                     border: none;
                     padding: 2px 0px 0px 0px;
@@ -436,10 +463,10 @@ class ChartElectrode(QWidget):
         """
         if speed == "0.2s":
             self._refresh_interval_ms = 200  # 0.2s = 200ms
-        else:
+        elif speed == "0.5s":
             self._refresh_interval_ms = 500  # 0.5s = 500ms
         
-        print(f" 图表刷新间隔已更新: {self._refresh_interval_ms}ms")
+        logger.info(f"图表刷新间隔已更新: {self._refresh_interval_ms}ms")
     
     # 9. 获取刷新间隔
     def get_refresh_interval_ms(self) -> int:
@@ -477,7 +504,7 @@ class ChartWidget(QWidget):
         min_current = 0
         max_current = 8000  # 8KA = 8000A（左侧Y轴：弧流）
         min_voltage = 0
-        max_voltage = 150  # 150V（右侧Y轴：弧压）
+        max_voltage = 300  # 300V（右侧Y轴：弧压，刻度显示0-30）
         
         # 绘制区域（左右都有Y轴，左侧Y轴10px，右侧Y轴20px，X轴标签高度22px）
         left_y_axis_width = 10  # 左侧Y轴刻度宽度
@@ -570,12 +597,12 @@ class ChartWidget(QWidget):
             ratio = value_a / max_value
             y = chart_rect.bottom() - chart_rect.height() * ratio
 
-            # 绘制刻度线
+            # 绘制刻度线（向右突出，在Y轴右侧）
             painter.setPen(QPen(QColor(colors.BORDER_DARK), 1))
             painter.drawLine(
-                int(chart_rect.left() - 4),
-                int(y),
                 int(chart_rect.left()),
+                int(y),
+                int(chart_rect.left() + 4),
                 int(y)
             )
 
@@ -589,25 +616,25 @@ class ChartWidget(QWidget):
                 text
             )
     
-    # 4.5 绘制右侧Y轴刻度（弧压：0-150 V）
+    # 4.5 绘制右侧Y轴刻度（弧压：0-300 V，刻度显示0-30，只显示偶数）
     def draw_right_y_axis(self, painter: QPainter, min_value: float, max_value: float, chart_rect: QRectF, colors):
         painter.setPen(QColor(colors.TEXT_PRIMARY))
         font = QFont("Microsoft YaHei", 9)
         font.setBold(True)
         painter.setFont(font)
 
-        # 16个刻度：0, 1, 2, ..., 15（代表 0V, 10V, 20V, ..., 150V）
-        for i in range(16):
-            value_v = i * 10  # 电压值（V）
+        # 16个刻度：0, 2, 4, 6, ..., 30（只显示偶数，代表 0V, 20V, 40V, ..., 300V）
+        for i in range(0, 32, 2):  # 0, 2, 4, ..., 30
+            value_v = i * 10  # 电压值（V），每个刻度代表10V
             ratio = value_v / max_value
             y = chart_rect.bottom() - chart_rect.height() * ratio
 
-            # 绘制刻度线
+            # 绘制刻度线（向左突出，在Y轴左侧）
             painter.setPen(QPen(QColor(colors.BORDER_DARK), 1))
             painter.drawLine(
-                int(chart_rect.right()),
+                int(chart_rect.right() - 4),
                 int(y),
-                int(chart_rect.right() + 4),
+                int(chart_rect.right()),
                 int(y)
             )
 
@@ -645,8 +672,8 @@ class ChartWidget(QWidget):
         max_upper_limit = max(all_upper_limits)
         min_lower_limit = min(all_lower_limits)
         
-        # 上限线颜色（适配主题）
-        upper_color = QColor(colors.STATUS_ALARM)
+        # 上限线颜色（固定橙红色 #FF6A45）
+        upper_color = QColor('#FF6A45')
         
         # 绘制上限线
         upper_ratio = (max_upper_limit - min_value) / value_range
@@ -663,8 +690,8 @@ class ChartWidget(QWidget):
         text_rect = QRectF(chart_rect.right() - 60 + 14, upper_y - 20, 55, 20)
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, "上限")
         
-        # 下限线颜色（适配主题）
-        lower_color = QColor(colors.STATUS_INFO)
+        # 下限线颜色（固定蓝色 #45B1FF）
+        lower_color = QColor('#45B1FF')
         
         # 绘制下限线
         lower_ratio = (min_lower_limit - min_value) / value_range

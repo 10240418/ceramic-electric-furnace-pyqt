@@ -1,7 +1,7 @@
 """
 批次对比组件 - 6宫格布局显示多个批次的柱状图对比
 """
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushButton
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QHBoxLayout, QLabel, QPushButton, QFrame
 from PyQt6.QtCore import Qt
 from ui.styles.themes import ThemeManager
 from ui.widgets.common.panel_tech import PanelTech
@@ -85,11 +85,18 @@ class WidgetBatchCompare(QWidget):
         
         # 第3行第2列：预留（可以添加其他对比指标）
         self.reserved_panel = PanelTech("预留对比项")
-        reserved_label = QWidget()
-        reserved_layout = QVBoxLayout()
-        reserved_layout.setContentsMargins(0, 0, 0, 0)
-        reserved_layout.addWidget(reserved_label)
-        self.reserved_panel.set_content_layout(reserved_layout)
+        reserved_content = QWidget()
+        reserved_content.setObjectName("reservedContent")
+        reserved_content_layout = QVBoxLayout(reserved_content)
+        reserved_content_layout.setContentsMargins(0, 0, 0, 0)
+        reserved_content_layout.setSpacing(0)
+        
+        # 空白占位容器（带边框）
+        reserved_placeholder = QFrame()
+        reserved_placeholder.setObjectName("reservedPlaceholder")
+        reserved_content_layout.addWidget(reserved_placeholder)
+        
+        self.reserved_panel.set_content_layout(reserved_content_layout)
         main_layout.addWidget(self.reserved_panel, 2, 1)
         
         # 设置行列拉伸比例（均匀分布）
@@ -198,6 +205,11 @@ class WidgetBatchCompare(QWidget):
             }}
             QWidget {{
                 background: {tm.bg_deep()};
+            }}
+            QFrame#reservedPlaceholder {{
+                background: transparent;
+                border: 1px solid {tm.border_dark()};
+                border-radius: 4px;
             }}
         """)
     

@@ -94,19 +94,19 @@ class AlarmThresholds:
         if self.arc_voltage_u is None:
             self.arc_voltage_u = ThresholdConfig(
                 warning_min=60.0, warning_max=70.0,
-                alarm_min=50.0, alarm_max=100.0,
+                alarm_min=50.0, alarm_max=150.0,
                 enabled=False
             )
         if self.arc_voltage_v is None:
             self.arc_voltage_v = ThresholdConfig(
                 warning_min=60.0, warning_max=70.0,
-                alarm_min=50.0, alarm_max=100.0,
+                alarm_min=50.0, alarm_max=150.0,
                 enabled=False
             )
         if self.arc_voltage_w is None:
             self.arc_voltage_w = ThresholdConfig(
                 warning_min=60.0, warning_max=70.0,
-                alarm_min=50.0, alarm_max=100.0,
+                alarm_min=50.0, alarm_max=150.0,
                 enabled=False
             )
         

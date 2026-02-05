@@ -346,11 +346,12 @@ class PageElec3(QWidget):
                     self.mock_data['electrodes'][phase_idx]['current_a'] = current
                     self.mock_data['electrodes'][phase_idx]['voltage_v'] = voltage
                     
-                    # 添加到电极图表数据
+                    # 添加到电极图表数据（包含弧压）
                     electrodes.append(ElectrodeData(
                         f"{phase}相",
                         setpoint,  # 设定值
-                        current    # 实际值
+                        current,   # 实际值
+                        voltage    # 弧压
                     ))
                 
                 # 更新电极电流图表

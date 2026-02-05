@@ -82,7 +82,7 @@ class AlarmChecker:
         elif status == 'alarm':
             return theme_colors.STATUS_ALARM    # 红色
         else:
-            return theme_colors.TEXT_PRIMARY    # 正常颜色
+            return theme_colors.GLOW_PRIMARY    # 正常颜色（主色调）
     
     # 4. 判断是否需要闪烁
     def should_blink(self, status: str) -> bool:

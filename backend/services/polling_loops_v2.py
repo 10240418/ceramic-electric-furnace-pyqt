@@ -61,7 +61,7 @@ _db32_running = False
 _status_running = False
 
 # DB1 轮询间隔 (秒) - 可动态修改
-_db1_interval: float = 0.5  # 默认0.5s，可通过配置修改为0.2s
+_db1_interval: float = 0.5  # 默认0.5s
 
 # 批量写入缓存 (与旧架构保持一致)
 _arc_buffer_count = 0

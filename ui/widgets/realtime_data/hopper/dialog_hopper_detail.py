@@ -11,7 +11,6 @@ from .table_feeding_record import TableFeedingRecord
 from .chart_feeding_stats import ChartFeedingStats
 from .dialog_set_limit import DialogSetLimit
 from backend.bridge.history_query import get_history_query_service
-from backend.bridge.data_cache import DataCache
 from loguru import logger
 from datetime import datetime, timedelta, timezone
 
@@ -23,9 +22,12 @@ class DialogHopperDetail(QDialog):
     upper_limit_set = pyqtSignal(float)
     
     # 1. 初始化弹窗
-    def __init__(self, parent=None):
+    def __init__(self, batch_code: str = '', parent=None):
         super().__init__(parent)
         self.theme_manager = ThemeManager.instance()
+        
+        # 批次号（从 CardHopper 传入）
+        self.batch_code = batch_code
         
         # 数据
         self.feeding_total = 0.0
@@ -35,7 +37,6 @@ class DialogHopperDetail(QDialog):
         
         # 历史查询服务
         self.history_service = get_history_query_service()
-        self.data_cache = DataCache()  # DataCache 使用 __new__ 实现单例，直接实例化即可
         
         self.setWindowTitle("投料详情")
         self.setModal(True)
@@ -323,63 +324,23 @@ class DialogHopperDetail(QDialog):
             y = parent_rect.y() + (parent_rect.height() - height) // 2
             self.move(x, y)
         
-        # 加载历史投料数据（如果失败则加载 Mock 数据）
-        # TODO: 生产环境禁用 Mock - 删除下面的 except 分支，让异常直接抛出
-        try:
-            self.load_feeding_history()
-        except Exception as e:
-            logger.warning(f"加载历史数据失败，使用 Mock 数据: {e}")
-            self.load_mock_data()  # TODO: 生产环境禁用 Mock - 删除这行
+        # 加载投料累计历史数据（用于绘制曲线）
+        self.load_feeding_total_history()
     
-    # 11. 加载历史投料数据
-    def load_feeding_history(self):
-        """从数据库加载当前批次的历史投料数据"""
+    # 11. 加载投料累计历史数据（用于绘制曲线）
+    def load_feeding_total_history(self):
+        """从数据库加载当前批次的投料累计历史数据"""
         try:
-            # 获取当前批次号（从数据缓存中获取）
-            batch_code = self.data_cache.get("batch_code")
+            # 使用传入的批次号
+            batch_code = self.batch_code
             
-            # TODO: 生产环境禁用 Mock - 将下面 3 行改为: if not batch_code: return
             if not batch_code:
-                logger.warning("未获取到当前批次号，加载 Mock 数据")
-                self.load_mock_data()  # TODO: 生产环境禁用 Mock - 删除这行
+                logger.warning("未获取到当前批次号，无法加载投料累计数据")
                 return
             
-            logger.info(f"开始加载批次 {batch_code} 的历史投料数据...")
+            logger.info(f"开始加载批次 {batch_code} 的投料累计历史数据...")
             
-            # 1. 查询投料记录（详细记录）
-            feeding_records_data = self.history_service.query_feeding_records(
-                batch_code=batch_code,
-                limit=300
-            )
-            
-            if feeding_records_data:
-                logger.info(f"查询到 {len(feeding_records_data)} 条投料记录")
-                
-                # 转换为前端需要的格式
-                records = []
-                for record in feeding_records_data:
-                    # query_feeding_records 返回的 time 是北京时间字符串
-                    time_str = record['time']
-                    
-                    # 解析时间字符串
-                    from dateutil import parser
-                    beijing_time = parser.isoparse(time_str)
-                    
-                    # 去掉时区信息（保持北京时间）
-                    if beijing_time.tzinfo is not None:
-                        beijing_time = beijing_time.replace(tzinfo=None)
-                    
-                    records.append({
-                        'timestamp': beijing_time,
-                        'weight': record['discharge_weight']
-                    })
-                
-                # 更新投料记录表
-                self.set_feeding_records(records)
-            else:
-                logger.warning(f"批次 {batch_code} 没有投料记录")
-            
-            # 2. 查询投料累计历史数据（用于绘制曲线）
+            # 查询投料累计历史数据（用于绘制曲线）
             feeding_total_data = self.history_service.query_feeding_total_raw(batch_code)
             
             if feeding_total_data:
@@ -408,63 +369,26 @@ class DialogHopperDetail(QDialog):
             else:
                 logger.warning(f"批次 {batch_code} 没有投料累计数据")
             
-            # TODO: 生产环境禁用 Mock - 删除下面 3 行，没有数据时显示空白
-            # 如果没有任何数据，加载 Mock 数据
-            if not feeding_records_data and not feeding_total_data:
-                logger.warning("没有查询到任何投料数据，加载 Mock 数据")
-                self.load_mock_data()  # TODO: 生产环境禁用 Mock - 删除这行
-            
         except Exception as e:
-            logger.error(f"加载历史投料数据失败: {e}", exc_info=True)
-            raise  # 重新抛出异常，让 showEvent 捕获并加载 Mock 数据
+            logger.error(f"加载投料累计历史数据失败: {e}", exc_info=True)
     
-    # 12. 加载 Mock 数据
-    # TODO: 生产环境禁用 Mock - 删除整个 load_mock_data() 方法
-    def load_mock_data(self):
-        """加载 Mock 数据用于 UI 测试"""
-        logger.info("加载 Mock 投料数据...")
+    # 12. 设置投料记录（从外部传入，如 CardHopper）
+    def set_feeding_records_from_card(self, records: list):
+        """
+        设置投料记录（从 CardHopper 传入的记录）
         
-        # 生成 Mock 投料记录（20 条）
-        base_time = datetime.now()
-        mock_records = []
-        
-        # 投料重量范围：150-220 kg
-        import random
-        for i in range(20):
-            # 每条记录间隔 5-10 分钟
-            record_time = base_time - timedelta(minutes=random.randint(5, 10) * i)
-            weight = random.uniform(150.0, 220.0)
-            mock_records.append({
-                'timestamp': record_time,
-                'weight': weight
-            })
-        
-        # 反转列表，让最早的记录在前面
-        mock_records.reverse()
-        
-        # 更新投料记录表
-        self.set_feeding_records(mock_records)
-        
-        # 生成 Mock 投料累计曲线数据（50 个点）
-        timestamps = []
-        cumulative_values = []
-        cumulative = 0.0
-        
-        start_time = base_time - timedelta(hours=8)  # 8 小时前开始
-        
-        for i in range(50):
-            # 每个点间隔约 10 分钟
-            timestamp = start_time + timedelta(minutes=10 * i)
-            # 每次增加 150-220 kg
-            cumulative += random.uniform(150.0, 220.0)
-            
-            timestamps.append(timestamp)
-            cumulative_values.append(cumulative)
-        
-        # 更新投料累计曲线
-        self.feeding_stats_chart.set_data(timestamps, cumulative_values)
-        
-        logger.info(f"Mock 数据加载完成：{len(mock_records)} 条记录，{len(timestamps)} 个累计数据点")
+        Args:
+            records: 记录列表 [{'timestamp': datetime, 'weight': float}, ...]
+        """
+        if records:
+            logger.info(f"从 CardHopper 接收到 {len(records)} 条投料记录")
+            # 打印前3条记录用于调试
+            for i, record in enumerate(records[:3]):
+                logger.debug(f"投料记录[{i}]: timestamp={record.get('timestamp')}, weight={record.get('weight')}")
+            self.set_feeding_records(records)
+        else:
+            logger.warning("CardHopper 没有投料记录（records 为空或 None）")
+            self.feeding_record_table.clear_records()
     
     # 13. 应用样式
     def apply_styles(self):

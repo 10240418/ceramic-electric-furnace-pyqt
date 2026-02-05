@@ -43,7 +43,7 @@ class WidgetTimeSelector(QWidget):
         # 开始时间按钮
         self.start_button = QPushButton(self.start_time.toString("MM/dd HH:mm"))
         self.start_button.setObjectName("time_range_btn")
-        self.start_button.setFixedHeight(28)
+        self.start_button.setFixedHeight(32)
         self.start_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.start_button.clicked.connect(self.select_start_time)
         layout.addWidget(self.start_button)
@@ -56,7 +56,7 @@ class WidgetTimeSelector(QWidget):
         # 结束时间按钮
         self.end_button = QPushButton(self.end_time.toString("MM/dd HH:mm"))
         self.end_button.setObjectName("time_range_btn")
-        self.end_button.setFixedHeight(28)
+        self.end_button.setFixedHeight(32)
         self.end_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.end_button.clicked.connect(self.select_end_time)
         layout.addWidget(self.end_button)
@@ -149,16 +149,16 @@ class WidgetTimeSelector(QWidget):
                 color: {colors.TEXT_PRIMARY};
                 border: 1px solid {colors.BORDER_MEDIUM};
                 border-radius: 4px;
-                padding: 4px 8px;
-                font-size: 12px;
-                font-weight: 500;
+                padding: 6px 16px;
+                font-size: 14px;
+                font-weight: bold;
             }}
             QPushButton#time_range_btn:hover {{
                 background: {colors.BTN_BG_HOVER};
-                border: 1px solid {self.accent_color}80;
+                border: 1px solid {self.accent_color};
             }}
             QPushButton#time_range_btn:pressed {{
-                background: {self.accent_color}4D;
+                background: {colors.BG_MEDIUM};
             }}
             
             QLabel#separator_label {{

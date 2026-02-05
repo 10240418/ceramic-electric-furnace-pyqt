@@ -1,7 +1,7 @@
 """
 投料统计折线图组件 - 显示投料重量随时间变化
 """
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QWidget
 from PyQt6.QtCore import Qt
 from ui.styles.themes import ThemeManager
 import pyqtgraph as pg
@@ -20,6 +20,10 @@ class ChartFeedingStats(QFrame):
         self.timestamps = []
         self.weights = []
         
+        # 保存原始数据范围（用于复原）
+        self.original_x_range = None
+        self.original_y_range = None
+        
         self.init_ui()
         self.apply_styles()
         
@@ -31,12 +35,32 @@ class ChartFeedingStats(QFrame):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
+        # 标题栏（包含标题和复原按钮）
+        title_bar = QWidget()
+        title_bar.setObjectName("chartTitleBar")
+        title_bar.setFixedHeight(36)
+        title_bar_layout = QHBoxLayout(title_bar)
+        title_bar_layout.setContentsMargins(12, 0, 12, 0)
+        title_bar_layout.setSpacing(8)
+        
         # 标题
         title_label = QLabel("投料累计(kg)")
         title_label.setObjectName("chartTitle")
-        title_label.setFixedHeight(36)
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        main_layout.addWidget(title_label)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        title_bar_layout.addWidget(title_label)
+        
+        title_bar_layout.addStretch()
+        
+        # 复原按钮
+        self.reset_btn = QPushButton("复原")
+        self.reset_btn.setObjectName("resetBtn")
+        self.reset_btn.setFixedHeight(24)
+        self.reset_btn.setFixedWidth(60)
+        self.reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.reset_btn.clicked.connect(self.reset_view)
+        title_bar_layout.addWidget(self.reset_btn)
+        
+        main_layout.addWidget(title_bar)
         
         # 图表
         self.plot_widget = pg.PlotWidget()
@@ -109,9 +133,33 @@ class ChartFeedingStats(QFrame):
             
             self.curve.setData(x_data, y_data)
             
+            # 保存原始范围（用于复原）
+            if x_data and y_data:
+                self.original_x_range = (min(x_data), max(x_data))
+                y_margin = (max(y_data) - min(y_data)) * 0.1 if max(y_data) != min(y_data) else 100
+                self.original_y_range = (min(y_data) - y_margin, max(y_data) + y_margin)
+            
             # 自定义 X 轴刻度标签
             if len(x_data) > 0:
                 self.update_x_axis_labels()
+    
+    # 5.5 复原视图
+    def reset_view(self):
+        """复原图表视图到原始范围"""
+        if self.original_x_range and self.original_y_range:
+            # 添加一些边距
+            x_margin = (self.original_x_range[1] - self.original_x_range[0]) * 0.05
+            
+            self.plot_widget.setXRange(
+                self.original_x_range[0] - x_margin,
+                self.original_x_range[1] + x_margin,
+                padding=0
+            )
+            self.plot_widget.setYRange(
+                self.original_y_range[0],
+                self.original_y_range[1],
+                padding=0
+            )
     
     # 6. 更新 X 轴标签
     def update_x_axis_labels(self):
@@ -153,6 +201,15 @@ class ChartFeedingStats(QFrame):
     # 8. 应用样式
     def apply_styles(self):
         colors = self.theme_manager.get_colors()
+        is_dark = self.theme_manager.is_dark_mode()
+        
+        # 复原按钮样式（参考历史曲线页面）
+        if is_dark:
+            btn_bg_normal = "rgba(42, 63, 95, 0.3)"
+            btn_bg_hover = "rgba(42, 63, 95, 0.5)"
+        else:
+            btn_bg_normal = colors.BG_LIGHT
+            btn_bg_hover = colors.BG_MEDIUM
         
         self.setStyleSheet(f"""
             QFrame#feedingStatsChart {{
@@ -161,14 +218,36 @@ class ChartFeedingStats(QFrame):
                 border-radius: 6px;
             }}
             
-            QLabel#chartTitle {{
+            QWidget#chartTitleBar {{
                 background: {colors.BG_LIGHT};
+                border: none;
+                border-bottom: 1px solid {colors.BORDER_DARK};
+                border-radius: 6px 6px 0 0;
+            }}
+            
+            QLabel#chartTitle {{
+                background: transparent;
                 color: {colors.TEXT_PRIMARY};
                 font-size: 14px;
                 font-weight: bold;
                 border: none;
-                border-bottom: 1px solid {colors.BORDER_DARK};
-                border-radius: 6px 6px 0 0;
+            }}
+            
+            QPushButton#resetBtn {{
+                background: {btn_bg_normal};
+                color: {colors.TEXT_PRIMARY};
+                border: 1px solid {colors.BORDER_DARK};
+                border-radius: 4px;
+                padding: 4px 12px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton#resetBtn:hover {{
+                background: {btn_bg_hover};
+                border: 1px solid {colors.GLOW_PRIMARY};
+            }}
+            QPushButton#resetBtn:pressed {{
+                background: {colors.BG_MEDIUM};
             }}
         """)
         

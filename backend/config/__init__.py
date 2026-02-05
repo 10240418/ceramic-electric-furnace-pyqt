@@ -28,7 +28,11 @@ class Settings(BaseSettings):
     # InfluxDB 配置
     # ============================================================
     influx_url: str = "http://localhost:8086"
-    influx_token: str = "zjIA_7YN4vyApLJhXyzvH7ipuMHLHcwoZMyWhPVJIA1m1kitnEW8eBki0a18MVcLao4IHEYhVUzykmGVw2gsjw=="
+    #3号电炉
+    #influx_token: str = "zjIA_7YN4vyApLJhXyzvH7ipuMHLHcwoZMyWhPVJIA1m1kitnEW8eBki0a18MVcLao4IHEYhVUzykmGVw2gsjw=="
+    #1号电炉
+    influx_token: str = "Y8Cxnn1ysEmgcPKexvLDBG8I03b00zJbLNk1QPDQGwlkXisGBKXE6Zyg7kXfBR1QR46Q9pyFnWPpmqtXcD7Nsw=="
+    
     influx_org: str = "furnace"
     influx_bucket: str = "sensor_data"
     

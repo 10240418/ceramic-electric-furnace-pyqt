@@ -73,7 +73,7 @@ class TopNavBar(QFrame):
         # 主布局
         layout = QHBoxLayout(self)
         layout.setContentsMargins(20, 10, 20, 10)
-        layout.setSpacing(15)
+        layout.setSpacing(10)  # 导航按钮之间的间距：从12px减小到10px (减小2px)
         
         # Logo 和标题
         logo_widget = self.create_logo()
@@ -88,23 +88,24 @@ class TopNavBar(QFrame):
             layout.addWidget(btn)
         
         layout.addStretch()
+        layout.addSpacing(-6)  # 减小泵房/料仓按钮和时钟之间的间距6px
         
         # 时钟显示
         self.clock_widget = LabelClock()
         layout.addWidget(self.clock_widget)
         
-        layout.addSpacing(-8)  # 时钟和PLC状态之间减小12px (原来4px，现在-8px，总共减小12px)
+        layout.addSpacing(-12)  # 时钟和PLC状态之间：-12px (从8px减小20px)
         
         # 状态指示器 (PLC, 服务, 数据库)
         self.status_plc = self.create_status_indicator("PLC")
         layout.addWidget(self.status_plc)
         
-        layout.addSpacing(2)  # 状态指示器之间：2px
+        layout.addSpacing(0)  # 状态指示器之间：0px (减小2px)
         
         self.status_service = self.create_status_indicator("服务")
         layout.addWidget(self.status_service)
         
-        layout.addSpacing(2)  # 状态指示器之间：2px
+        layout.addSpacing(0)  # 状态指示器之间：0px (减小2px)
         
         self.status_database = self.create_status_indicator("数据库")
         layout.addWidget(self.status_database)
@@ -135,7 +136,7 @@ class TopNavBar(QFrame):
         layout.addWidget(logo_bar)
         
         # 标题文字
-        title = QLabel("#3电炉")
+        title = QLabel("#1电炉")
         title.setObjectName("nav_title")
         title.setFont(QFont("Microsoft YaHei", 16, QFont.Weight.Bold))
         layout.addWidget(title)
@@ -147,7 +148,7 @@ class TopNavBar(QFrame):
         btn = QPushButton(text)
         btn.setObjectName(f"nav_btn_{index}")
         btn.setFixedHeight(36)
-        btn.setMinimumWidth(100)
+        btn.setMinimumWidth(98)  # 从100px减小到98px (减小2px)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.clicked.connect(lambda: self.on_nav_clicked(index))
         return btn
@@ -286,15 +287,15 @@ class TopNavBar(QFrame):
         tm = self.theme_manager
         
         if is_ok:
-            # 正常：深色主题用青蓝色，浅色主题用绿色
+            # 正常：使用 GLOW_PRIMARY 主题配色（深色主题青色，浅色主题深绿）
             widget.setStyleSheet(f"""
                 QWidget {{
                     background: transparent;
-                    border: 1px solid {tm.status_info()};
+                    border: 1px solid {tm.border_glow()};
                     border-radius: 4px;
                 }}
                 QLabel {{
-                    color: {tm.status_info()};
+                    color: {tm.border_glow()};
                     background: transparent;
                     border: none;
                 }}

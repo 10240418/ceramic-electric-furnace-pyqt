@@ -28,13 +28,13 @@ class PollingConfig:
         self._initialized = True
         self._config_lock = threading.Lock()
         
-        # 1. 默认轮询速度: 0.2s
-        self._polling_speed: PollingSpeed = "0.2s"
+        # 1. 默认轮询速度: 0.5s
+        self._polling_speed: PollingSpeed = "0.5s"
         
         # 2. 回调函数列表 (当配置变化时通知)
         self._callbacks = []
         
-        print(" 轮询配置管理器已初始化 (默认: 0.2s)")
+        print(" 轮询配置管理器已初始化 (默认: 0.5s)")
     
     # 1. 获取当前轮询速度
     def get_polling_speed(self) -> PollingSpeed:

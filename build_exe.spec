@@ -118,7 +118,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='3号电炉',
+    name='1号电炉',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -141,6 +141,6 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='3号电炉',
+    name='1号电炉',
 )
 

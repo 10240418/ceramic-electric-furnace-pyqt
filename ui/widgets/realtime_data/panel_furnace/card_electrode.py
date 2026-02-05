@@ -203,7 +203,7 @@ class CardElectrode(QFrame):
             }}
             
             QLabel#electrodeTitle {{
-                color: {colors.GLOW_PRIMARY};
+                color: {colors.TEXT_PRIMARY};
                 font-size: 18px;
                 font-weight: bold;
             }}

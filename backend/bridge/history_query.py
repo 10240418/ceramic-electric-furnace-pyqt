@@ -476,7 +476,7 @@ class HistoryQueryService:
         try:
             time_filter = self._build_time_filter(batch_code, start_time, end_time)
             
-            # 使用新标签格式查询
+            # 查询投料累计数据
             query = f'''
             from(bucket: "{settings.influx_bucket}")
               {time_filter}

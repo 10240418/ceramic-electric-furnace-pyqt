@@ -36,19 +36,19 @@ class LabelClock(QWidget):
     def init_ui(self):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(3)
+        layout.setSpacing(2)
         
         # 日期标签 (yyyy年mm月dd日)
         self.date_label = QLabel()
         self.date_label.setObjectName("clock_date")
-        self.date_label.setFont(QFont("Consolas", 14, QFont.Weight.DemiBold))
+        self.date_label.setFont(QFont("Consolas", 18, QFont.Weight.DemiBold))
         self.date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.date_label)
         
         # 时间标签 (HH:MM:SS)
         self.time_label = QLabel()
         self.time_label.setObjectName("clock_time")
-        self.time_label.setFont(QFont("Consolas", 14, QFont.Weight.DemiBold))
+        self.time_label.setFont(QFont("Consolas", 18, QFont.Weight.DemiBold))
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.time_label)
     

@@ -61,9 +61,9 @@ class CardPowerEnergy(QFrame):
             power_kw: 总功率（千瓦）
             energy_kwh: 总能耗（千瓦时）
         """
-        # 使用 HTML 格式，标签正常大小，数值 26px
-        self.power_label.setText(f'总功率: <span style="font-size: 26px;">{power_kw:.1f}kW</span>')
-        self.energy_label.setText(f'总能耗: <span style="font-size: 26px;">{energy_kwh:.1f}kWh</span>')
+        # 标签和数值统一使用 26px
+        self.power_label.setText(f'总功率: {power_kw:.1f}kW')
+        self.energy_label.setText(f'总能耗: {energy_kwh:.1f}kWh')
     
     # 4. 应用样式
     def apply_styles(self):
@@ -77,20 +77,20 @@ class CardPowerEnergy(QFrame):
             }}
             
             QLabel#powerEnergyTitle {{
-                color: {colors.GLOW_PRIMARY};
+                color: {colors.TEXT_PRIMARY};
                 font-size: 18px;
                 font-weight: bold;
             }}
             
             QLabel#power_label {{
                 color: {colors.GLOW_PRIMARY};
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
             }}
             
             QLabel#energy_label {{
                 color: {colors.GLOW_PRIMARY};
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
             }}
         """)

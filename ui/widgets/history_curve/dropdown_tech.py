@@ -39,7 +39,7 @@ class DropdownTech(QWidget):
         
         # 显示当前值的按钮
         self.button = QPushButton(self.current_value if self.current_value else "请选择")
-        self.button.setFixedHeight(36)
+        self.button.setFixedHeight(32)
         self.button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.button.clicked.connect(self.show_popup)
         
@@ -123,8 +123,8 @@ class DropdownTech(QWidget):
                 border-radius: 4px;
                 padding: 6px 16px;
                 text-align: left;
-                font-size: 16px;
-                font-weight: 600;
+                font-size: 14px;
+                font-weight: bold;
             }}
             QPushButton:hover {{
                 background: {colors.BTN_BG_HOVER};
@@ -323,7 +323,7 @@ class DropdownMultiSelect(QWidget):
         
         # 显示选中数量的按钮
         self.button = QPushButton(f"已选 {len(self.selected_values)} 项")
-        self.button.setFixedHeight(28)
+        self.button.setFixedHeight(32)
         self.button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.button.clicked.connect(self.toggle_popup)
         
@@ -406,9 +406,10 @@ class DropdownMultiSelect(QWidget):
                 color: {colors.TEXT_PRIMARY};
                 border: 1px solid {colors.BORDER_MEDIUM};
                 border-radius: 4px;
-                padding: 4px 12px;
+                padding: 6px 16px;
                 text-align: left;
-                font-size: 12px;
+                font-size: 14px;
+                font-weight: bold;
             }}
             QPushButton:hover {{
                 background: {colors.BTN_BG_HOVER};

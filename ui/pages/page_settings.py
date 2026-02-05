@@ -3,11 +3,12 @@
 """
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QPushButton, QFrame, QScrollArea, QDoubleSpinBox, QCheckBox, QMessageBox
+    QPushButton, QFrame, QDoubleSpinBox, QCheckBox, QMessageBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QIcon
 from ui.styles.themes import ThemeManager, Theme
+from ui.widgets.common.scroll_area_draggable import ScrollAreaDraggable
 from backend.alarm_thresholds import get_alarm_threshold_manager, ThresholdConfig
 from loguru import logger
 
@@ -147,8 +148,8 @@ class PageSettings(QWidget):
         title_bar = self.create_title_bar("系统配置")
         self.right_layout.addWidget(title_bar)
         
-        # 滚动区域
-        scroll_area = QScrollArea()
+        # 滚动区域（支持拖拽滚动）
+        scroll_area = ScrollAreaDraggable()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         scroll_area.setObjectName("content_scroll")
@@ -173,8 +174,8 @@ class PageSettings(QWidget):
         title_bar = self.create_title_bar("报警阈值")
         self.right_layout.addWidget(title_bar)
         
-        # 滚动区域
-        scroll_area = QScrollArea()
+        # 滚动区域（支持拖拽滚动）
+        scroll_area = ScrollAreaDraggable()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         scroll_area.setObjectName("content_scroll")
@@ -199,8 +200,8 @@ class PageSettings(QWidget):
         title_bar = self.create_title_bar("弧流设置")
         self.right_layout.addWidget(title_bar)
         
-        # 滚动区域
-        scroll_area = QScrollArea()
+        # 滚动区域（支持拖拽滚动）
+        scroll_area = ScrollAreaDraggable()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         scroll_area.setObjectName("content_scroll")
@@ -530,8 +531,8 @@ class PageSettings(QWidget):
         title_bar = self.create_title_bar("蝶阀配置")
         self.right_layout.addWidget(title_bar)
         
-        # 滚动区域
-        scroll_area = QScrollArea()
+        # 滚动区域（支持拖拽滚动）
+        scroll_area = ScrollAreaDraggable()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         scroll_area.setObjectName("content_scroll")

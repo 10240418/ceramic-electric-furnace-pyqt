@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QScrollArea, QSizePolicy, QWidget, QScroller
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QTimer, QPoint, QTime
+from PyQt6.QtGui import QFont
 from ui.styles.themes import ThemeManager
 from datetime import datetime
 
@@ -27,6 +28,7 @@ class CardHopper(QFrame):
         self.feeding_total = 0.0
         self.upper_limit = 5000.0
         self.state = 'idle'
+        self.batch_code = ''  # 当前批次号
         
         # 投料记录
         self.records = []
@@ -43,25 +45,75 @@ class CardHopper(QFrame):
         
         # 监听主题变化
         self.theme_manager.theme_changed.connect(self.on_theme_changed)
-        
-        # 添加默认测试数据
-        self.add_default_records()
     
     # 2. 初始化 UI
     def init_ui(self):
-        main_layout = QHBoxLayout(self)
+        main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
+        # 顶部标题栏（投料状态）
+        self.create_title_bar()
+        main_layout.addWidget(self.title_bar)
+        
+        # 标题栏下方的分割线
+        title_divider_container = QWidget()
+        title_divider_container.setObjectName("titleDividerContainer")
+        title_divider_layout = QHBoxLayout(title_divider_container)
+        title_divider_layout.setContentsMargins(0, 0, 12, 0)
+        title_divider_layout.setSpacing(0)
+        
+        title_divider = QFrame()
+        title_divider.setFrameShape(QFrame.Shape.HLine)
+        title_divider.setObjectName("titleDivider")
+        title_divider.setFixedHeight(1)
+        title_divider_layout.addWidget(title_divider)
+        
+        main_layout.addWidget(title_divider_container)
+        
+        # 下方内容区域（左右分栏）
+        content_widget = QWidget()
+        content_widget.setObjectName("contentArea")
+        content_layout = QHBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        
         # 左侧 60%：投料记录表
         self.create_left_panel()
-        main_layout.addWidget(self.left_panel, stretch=60)
+        content_layout.addWidget(self.left_panel, stretch=60)
         
         # 右侧 40%：数据面板
         self.create_right_panel()
-        main_layout.addWidget(self.right_panel, stretch=40)
+        content_layout.addWidget(self.right_panel, stretch=40)
+        
+        main_layout.addWidget(content_widget)
     
-    # 3. 创建左侧面板（投料记录表）
+    # 3. 创建顶部标题栏（投料状态）
+    def create_title_bar(self):
+        self.title_bar = QWidget()
+        self.title_bar.setObjectName("titleBar")
+        self.title_bar.setFixedHeight(52)
+        
+        title_layout = QHBoxLayout(self.title_bar)
+        title_layout.setContentsMargins(12, 2, 12, 2)
+        title_layout.setSpacing(8)
+        
+        # 左侧弹簧，让内容右对齐
+        title_layout.addStretch()
+        
+        # 投料状态标签
+        status_label = QLabel("投料状态:")
+        status_label.setObjectName("statusLabel")
+        status_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        title_layout.addWidget(status_label)
+        
+        # 状态值
+        self.status_value_label = QLabel("静止")
+        self.status_value_label.setObjectName("statusValue")
+        self.status_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        title_layout.addWidget(self.status_value_label)
+    
+    # 4. 创建左侧面板（投料记录表）
     def create_left_panel(self):
         self.left_panel = QFrame()
         self.left_panel.setObjectName("leftPanel")
@@ -82,11 +134,11 @@ class CardHopper(QFrame):
         # 记录容器
         self.records_container = QWidget()
         self.records_container.setObjectName("recordsContainer")
-        self.records_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.records_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.records_layout = QVBoxLayout(self.records_container)
         self.records_layout.setContentsMargins(0, 0, 0, 0)
         self.records_layout.setSpacing(0)
-        self.records_layout.addStretch()
+        self.records_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         self.scroll_area.setWidget(self.records_container)
         QScroller.grabGesture(self.scroll_area.viewport(), QScroller.ScrollerGestureType.LeftMouseButtonGesture)
@@ -96,74 +148,89 @@ class CardHopper(QFrame):
         
         layout.addWidget(self.scroll_area, stretch=1)
     
-    # 4. 创建右侧面板（数据面板）
+    # 5. 创建右侧面板（数据面板）
     def create_right_panel(self):
         self.right_panel = QFrame()
         self.right_panel.setObjectName("rightPanel")
         
         layout = QVBoxLayout(self.right_panel)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(12, 2, 12, 2)
         layout.setSpacing(0)
-        
-        # 设置料仓上限按钮
-        self.set_limit_btn = QPushButton("设置料仓上限")
-        self.set_limit_btn.setObjectName("setLimitBtn")
-        self.set_limit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.set_limit_btn.clicked.connect(self.on_set_limit_clicked)
-        layout.addWidget(self.set_limit_btn)
-        
-        # 分割线
-        divider = QFrame()
-        divider.setObjectName("divider")
-        divider.setFixedHeight(1)
-        layout.addWidget(divider)
-        
-        # 料仓上限数据块
-        self.upper_limit_block = self.create_data_block("料仓上限:", "5000", "kg")
-        self.upper_limit_block.setObjectName("upperLimitBlock")
-        layout.addWidget(self.upper_limit_block, stretch=1)
-        
-        # 投料状态数据块
-        self.status_block = self.create_status_block()
-        layout.addWidget(self.status_block, stretch=1)
-        
-        # 料仓重量数据块
-        self.hopper_weight_block = self.create_data_block("料仓重量:", "0", "kg")
-        layout.addWidget(self.hopper_weight_block, stretch=1)
         
         # 投料累计数据块
         self.feeding_total_block = self.create_data_block("投料累计:", "0", "kg")
-        layout.addWidget(self.feeding_total_block, stretch=1)
+        layout.addWidget(self.feeding_total_block)
         
-        for block in (self.upper_limit_block, self.status_block, self.hopper_weight_block, self.feeding_total_block):
-            block.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            block.layout().setContentsMargins(0, 0, 0, 0)
-            block.layout().setSpacing(2)
+        # 分割线
+        self.add_divider(layout)
+        
+        # 料仓重量数据块
+        self.hopper_weight_block = self.create_data_block("料仓重量:", "0", "kg")
+        layout.addWidget(self.hopper_weight_block)
+        
+        # 分割线
+        self.add_divider(layout)
+        
+        # 上次投料量数据块
+        self.last_feeding_block = self.create_data_block("上次投料量:", "0", "kg")
+        layout.addWidget(self.last_feeding_block)
+        
+        # 分割线
+        self.add_divider(layout)
+        
+        # 添加弹簧，让数据从顶部开始排列
+        layout.addStretch()
     
-    # 5. 创建数据块
-    def create_data_block(self, label: str, value: str, unit: str) -> QFrame:
-        block = QFrame()
+    # 6. 添加分割线
+    def add_divider(self, layout):
+        """添加分割线"""
+        divider_container = QWidget()
+        divider_container_layout = QHBoxLayout(divider_container)
+        divider_container_layout.setContentsMargins(0, 0, 0, 0)
+        divider_container_layout.setSpacing(0)
+        
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setObjectName("dataDivider")
+        divider.setFixedHeight(1)
+        divider_container_layout.addWidget(divider)
+        
+        layout.addWidget(divider_container)
+    
+    # 7. 创建数据块（类似炉皮冷却水的样式）
+    def create_data_block(self, label: str, value: str, unit: str) -> QWidget:
+        """创建数据块（2行布局：标签、数值+单位）"""
+        block = QWidget()
         block.setObjectName("dataBlock")
         
         layout = QVBoxLayout(block)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(0, 4, 0, 4)
         layout.setSpacing(4)
         
-        # 标签（小字，左对齐）
+        # 第 1 行：标签（右对齐）
         label_widget = QLabel(label)
         label_widget.setObjectName("blockLabel")
         label_widget.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(label_widget)
         
-        # 数值 + 单位
-        value_layout = QHBoxLayout()
+        # 第 2 行：数值 + 单位（同一行，右对齐）
+        value_row = QWidget()
+        value_layout = QHBoxLayout(value_row)
         value_layout.setContentsMargins(0, 0, 0, 0)
-        value_layout.setSpacing(4)
+        value_layout.setSpacing(6)
+        
         value_layout.addStretch()
         
+        # 数值（使用 QFont 设置字体）
         value_label = QLabel(value)
         value_label.setObjectName("blockValue")
         value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        
+        # 设置字体：Roboto Mono, 26px, 加粗
+        font = QFont("Roboto Mono", 26)
+        font.setBold(True)
+        value_label.setFont(font)
+        
         value_layout.addWidget(value_label)
         
         unit_label = QLabel(unit)
@@ -171,34 +238,11 @@ class CardHopper(QFrame):
         unit_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         value_layout.addWidget(unit_label)
         
-        layout.addLayout(value_layout)
+        layout.addWidget(value_row)
         
         return block
     
-    # 6. 创建状态数据块
-    def create_status_block(self) -> QFrame:
-        block = QFrame()
-        block.setObjectName("statusBlock")
-        
-        layout = QVBoxLayout(block)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
-        
-        # 标签（小字，右对齐）
-        label_widget = QLabel("投料状态:")
-        label_widget.setObjectName("blockLabel")
-        label_widget.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(label_widget)
-        
-        # 状态值
-        self.status_value_label = QLabel("静止")
-        self.status_value_label.setObjectName("statusValue")
-        self.status_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(self.status_value_label)
-        
-        return block
-    
-    # 7. 更新数据
+    # 8. 更新数据
     def update_data(self, hopper_weight: float, feeding_total: float, 
                     upper_limit: float, state: str = 'idle', batch_code: str = ''):
         """
@@ -210,7 +254,7 @@ class CardHopper(QFrame):
         Args:
             hopper_weight: 料仓重量（kg）
             feeding_total: 投料累计（kg）
-            upper_limit: 料仓上限（kg）
+            upper_limit: 料仓上限（kg）（已废弃，保留参数兼容性）
             state: 料仓状态
                 - 'idle': 静止
                 - 'feeding': 上料中
@@ -230,6 +274,7 @@ class CardHopper(QFrame):
         self.feeding_total = feeding_total
         self.upper_limit = upper_limit
         self.state = state
+        self.batch_code = batch_code  # 保存批次号
         
         # 如果投料累计变化且有批次号，触发投料记录查询
         if feeding_total_changed and batch_code:
@@ -237,23 +282,6 @@ class CardHopper(QFrame):
             logger.info(f"检测到投料累计变化: {self.last_feeding_total:.1f} -> {feeding_total:.1f} kg，触发投料记录查询")
             self.last_feeding_total = feeding_total
             self.load_feeding_records(batch_code)
-        
-        # 更新投料累计
-        if feeding_total > 0.0:
-            value_label = self.feeding_total_block.findChild(QLabel, "blockValue")
-            if value_label:
-                value_label.setText(str(int(feeding_total)))
-        
-        # 更新料仓重量
-        if hopper_weight > 0.0:
-            value_label = self.hopper_weight_block.findChild(QLabel, "blockValue")
-            if value_label:
-                value_label.setText(str(int(hopper_weight)))
-        
-        # 更新料仓上限
-        value_label = self.upper_limit_block.findChild(QLabel, "blockValue")
-        if value_label:
-            value_label.setText(str(int(upper_limit)))
         
         # 更新投料状态
         state_text_map = {
@@ -275,19 +303,47 @@ class CardHopper(QFrame):
         self.status_value_label.setStyleSheet(f"""
             QLabel#statusValue {{
                 color: {state_color_map.get(state, colors.TEXT_PRIMARY)};
-                font-size: 24px;
+                font-size: 22px;
                 font-weight: bold;
                 border: none;
                 background: transparent;
             }}
         """)
+        
+        # 更新投料累计
+        if feeding_total > 0.0:
+            value_label = self.feeding_total_block.findChild(QLabel, "blockValue")
+            if value_label:
+                value_label.setText(str(int(feeding_total)))
+        
+        # 更新料仓重量
+        if hopper_weight > 0.0:
+            value_label = self.hopper_weight_block.findChild(QLabel, "blockValue")
+            if value_label:
+                value_label.setText(str(int(hopper_weight)))
+        
+        # 更新上次投料量（从投料记录列表中获取最新一条）
+        self.update_last_feeding_weight()
     
-    # 8. 点击设置料仓上限按钮
+    # 9. 更新上次投料量
+    def update_last_feeding_weight(self):
+        """更新上次投料量（显示最新一条投料记录的重量）"""
+        value_label = self.last_feeding_block.findChild(QLabel, "blockValue")
+        if value_label:
+            if self.records:
+                # 获取最新一条记录的重量
+                last_weight = self.records[-1]['weight']
+                value_label.setText(f"{last_weight:.1f}")
+            else:
+                # 没有记录时显示 0
+                value_label.setText("0")
+    
+    # 10. 点击设置料仓上限按钮（已废弃）
     def on_set_limit_clicked(self):
-        """点击设置料仓上限按钮，发射信号"""
+        """点击设置料仓上限按钮，发射信号（已废弃，保留兼容性）"""
         self.set_limit_clicked.emit()
     
-    # 9. 添加投料记录
+    # 10. 添加投料记录
     def add_record(self, timestamp: datetime, weight: float):
         """
         添加投料记录
@@ -299,20 +355,23 @@ class CardHopper(QFrame):
         record_item = self.create_record_item(timestamp, weight)
         
         # 插入到最前面（最新的在上面）
-        self.records_layout.insertWidget(0, record_item, stretch=1)
+        self.records_layout.insertWidget(0, record_item)
         
         self.records.append({
             'timestamp': timestamp,
             'weight': weight
         })
+        
+        # 更新上次投料量
+        self.update_last_feeding_weight()
     
-    # 10. 创建记录项
+    # 11. 创建记录项
     def create_record_item(self, timestamp: datetime, weight: float) -> QFrame:
         """创建单条记录项"""
         item = QFrame()
         item.setObjectName("recordItem")
-        item.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        item.setMinimumHeight(42)
+        item.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        item.setFixedHeight(42)
 
         layout = QHBoxLayout(item)
         layout.setContentsMargins(8, 2, 8, 2)
@@ -349,7 +408,7 @@ class CardHopper(QFrame):
         
         return item
     
-    # 11. 清空记录
+    # 12. 清空记录
     def clear_records(self):
         """清空所有记录"""
         while self.records_layout.count():
@@ -358,8 +417,11 @@ class CardHopper(QFrame):
                 item.widget().deleteLater()
         
         self.records.clear()
+        
+        # 清空后更新上次投料量为 0
+        self.update_last_feeding_weight()
     
-    # 12. 设置记录列表
+    # 13. 设置记录列表
     def set_records(self, records: list):
         """
         设置记录列表
@@ -372,7 +434,6 @@ class CardHopper(QFrame):
         # 反转记录列表，让最新的记录显示在最上面
         for record in reversed(records):
             self.add_record(record['timestamp'], record['weight'])
-        self.records_layout.addStretch()
     
     # 14. 加载投料记录（从数据库查询）
     def load_feeding_records(self, batch_code: str):
@@ -460,71 +521,66 @@ class CardHopper(QFrame):
                 border-radius: 6px;
             }}
             
+            QWidget#titleBar {{
+                background: transparent;
+                border: none;
+                border-radius: 0px;
+            }}
+            
+            QWidget#titleDividerContainer {{
+                background: transparent;
+                border: none;
+            }}
+            
+            QFrame#titleDivider {{
+                background: {colors.BORDER_ACCENT};
+                border: none;
+                max-height: 1px;
+                min-height: 1px;
+            }}
+            
+            QLabel#statusLabel {{
+                color: {colors.TEXT_PRIMARY};
+                font-size: 22px;
+                font-weight: bold;
+                border: none;
+                background: transparent;
+            }}
+            
+            QLabel#statusValue {{
+                color: {colors.TEXT_PRIMARY};
+                font-size: 22px;
+                font-weight: bold;
+                border: none;
+                background: transparent;
+            }}
+            
+            QWidget#contentArea {{
+                background: transparent;
+                border: none;
+            }}
+            
             QFrame#leftPanel {{
                 background: transparent;
-                border-left: 1px solid {colors.BORDER_DARK};
-                border-top: 1px solid {colors.BORDER_DARK};
-                border-bottom: 1px solid {colors.BORDER_DARK};
-                border-right: 1px solid {colors.BORDER_DARK};
-                border-radius: 6px;
-                border-top-right-radius: 0px;
-                border-bottom-right-radius: 0px;
+                border: none;
+                border-right: 1px solid {colors.BORDER_ACCENT};
             }}
             
             QFrame#rightPanel {{
                 background: transparent;
-                border-top: 1px solid {colors.BORDER_DARK};
-                border-right: 1px solid {colors.BORDER_DARK};
-                border-bottom: 1px solid {colors.BORDER_DARK};
-                border-left: none;
-                border-radius: 6px;
-                border-top-left-radius: 0px;
-                border-bottom-left-radius: 0px;
-                padding: 12px 10px 10px;
+                border: none;
             }}
             
-            QPushButton#setLimitBtn {{
-                background: {colors.BUTTON_PRIMARY_BG};
-                color: {colors.BUTTON_PRIMARY_TEXT};
-                border: 1px solid {colors.BORDER_GLOW};
-                border-radius: 4px;
-                padding: 10px 12px;
-                font-size: 16px;
-                font-weight: bold;
-            }}
-            QPushButton#setLimitBtn:hover {{
-                background: {colors.BUTTON_PRIMARY_HOVER};
-                border: 1px solid {colors.GLOW_PRIMARY};
-            }}
-            QPushButton#setLimitBtn:pressed {{
-                background: {colors.BG_MEDIUM};
+            QWidget#dataBlock {{
+                background: transparent;
+                border: none;
             }}
             
-            QFrame#divider {{
+            QFrame#dataDivider {{
                 background: {colors.BORDER_ACCENT};
                 border: none;
-                margin: 10px 0px;
-            }}
-            
-            QFrame#dataBlock {{
-                background: transparent;
-                border: none;
-                border-bottom: 1px solid {colors.BORDER_ACCENT};
-                border-radius: 0px;
-            }}
-            
-            QFrame#upperLimitBlock {{
-                background: transparent;
-                border: none;
-                border-bottom: 1px solid {colors.BORDER_ACCENT};
-                border-radius: 0px;
-            }}
-            
-            QFrame#statusBlock {{
-                background: transparent;
-                border: none;
-                border-bottom: 1px solid {colors.BORDER_ACCENT};
-                border-radius: 0px;
+                max-height: 1px;
+                min-height: 1px;
             }}
             
             QLabel#blockLabel {{
@@ -536,7 +592,6 @@ class CardHopper(QFrame):
             
             QLabel#blockValue {{
                 color: {colors.GLOW_PRIMARY};
-                font-size: 28px;
                 font-weight: bold;
                 font-family: "Roboto Mono";
                 border: none;
@@ -545,22 +600,7 @@ class CardHopper(QFrame):
             
             QLabel#blockUnit {{
                 color: {colors.TEXT_PRIMARY};
-                font-size: 20px;
-                border: none;
-                background: transparent;
-            }}
-            
-            QFrame#statusBlock {{
-                background: transparent;
-                border: none;
-                border-bottom: 1px solid {colors.BORDER_DARK};
-                border-radius: 0px;
-            }}
-            
-            QLabel#statusValue {{
-                color: {colors.TEXT_PRIMARY};
-                font-size: 24px;
-                font-weight: bold;
+                font-size: 16px;
                 border: none;
                 background: transparent;
             }}
@@ -643,27 +683,13 @@ class CardHopper(QFrame):
             }}
         """)
     
-    # 17. 添加默认测试记录
-    def add_default_records(self):
-        """添加默认测试记录（用于 UI 测试）"""
-        from datetime import timedelta
-        
-        # 生成 10 条测试记录
-        base_time = datetime.now()
-        test_weights = [150.5, 200.3, 175.8, 220.1, 190.6, 165.4, 210.9, 185.2, 195.7, 205.3]
-        
-        for i, weight in enumerate(test_weights):
-            # 每条记录间隔 5 分钟
-            record_time = base_time - timedelta(minutes=i * 5)
-            self.add_record(record_time, weight)
-    
-    # 18. 主题变化时重新应用样式
+    # 17. 主题变化时重新应用样式
     def on_theme_changed(self):
         self.apply_styles()
         # 强制刷新所有投料记录的颜色
         self._refresh_record_colors()
     
-    # 19. 强制刷新投料记录颜色
+    # 18. 强制刷新投料记录颜色
     def _refresh_record_colors(self):
         """强制刷新所有投料记录的日期和时间颜色"""
         colors = self.theme_manager.get_colors()
@@ -706,7 +732,7 @@ class CardHopper(QFrame):
                             }}
                         """)
     
-    # 20. 事件过滤器（检测单击事件）
+    # 19. 事件过滤器（检测单击事件）
     def eventFilter(self, obj, event):
         """事件过滤器，用于检测滚动区域的单击事件"""
         if obj == self.scroll_area.viewport():
@@ -735,18 +761,18 @@ class CardHopper(QFrame):
         
         return super().eventFilter(obj, event)
     
-    # 21. 打开详情弹窗
+    # 20. 打开详情弹窗
     def open_detail_dialog(self):
         """打开投料详情弹窗 - 使用延迟调用避免事件冲突"""
         # 使用 QTimer.singleShot 延迟打开，让当前事件处理完成
         QTimer.singleShot(50, self._do_open_detail_dialog)
     
-    # 21.1 实际打开弹窗
+    # 20.1 实际打开弹窗
     def _do_open_detail_dialog(self):
         """实际打开弹窗的方法"""
         from .dialog_hopper_detail import DialogHopperDetail
         
-        dialog = DialogHopperDetail(self.window())
+        dialog = DialogHopperDetail(batch_code=self.batch_code, parent=self.window())
         
         # 更新弹窗数据
         dialog.update_data(
@@ -756,15 +782,15 @@ class CardHopper(QFrame):
             state=self.state
         )
         
+        # 传递投料记录数据（从 CardHopper 的 records 列表）
+        dialog.set_feeding_records_from_card(self.records)
+        
         # 连接料仓上限设置信号
         dialog.upper_limit_set.connect(self.on_detail_limit_set)
         
         dialog.exec()
     
-    # 22. 详情弹窗中设置了料仓上限
+    # 21. 详情弹窗中设置了料仓上限（已废弃）
     def on_detail_limit_set(self, limit: float):
-        """详情弹窗中设置了料仓上限，更新主卡片显示"""
+        """详情弹窗中设置了料仓上限，更新主卡片显示（已废弃，保留兼容性）"""
         self.upper_limit = limit
-        value_label = self.upper_limit_block.findChild(QLabel, "blockValue")
-        if value_label:
-            value_label.setText(str(int(limit)))

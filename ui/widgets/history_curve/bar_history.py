@@ -254,11 +254,13 @@ class BarHistory(QWidget):
                 
                 logger.info(f"批次 {batch_code} 时间范围: {start_time} - {end_time}, 总时长: {self.batch_duration_hours:.1f}h")
                 
-                # 更新时间选择器的时间范围
+                # 更新时间选择器的时间范围（不触发自动查询）
                 self.time_selector.set_batch_time_range(start_time, end_time, self.batch_duration_hours)
                 
                 # 发送批次时间范围加载完成信号
                 self.batch_time_range_loaded.emit(batch_code, start_time, end_time)
+                
+                logger.info(f"批次时间范围已设置，请点击查询按钮查询数据")
             else:
                 logger.warning(f"批次 {batch_code} 没有找到时间范围")
                 self.batch_start_time = None

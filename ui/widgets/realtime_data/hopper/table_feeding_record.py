@@ -1,10 +1,11 @@
 """
 投料记录表组件 - 显示投料历史记录列表
 """
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QWidget, QScroller
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QWidget, QScroller, QSizePolicy
 from PyQt6.QtCore import Qt, QTimer
 from ui.styles.themes import ThemeManager
 from datetime import datetime
+from loguru import logger
 
 
 class TableFeedingRecord(QFrame):
@@ -47,10 +48,11 @@ class TableFeedingRecord(QFrame):
         # 记录容器
         self.records_container = QWidget()
         self.records_container.setObjectName("recordsContainer")
+        self.records_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.records_layout = QVBoxLayout(self.records_container)
         self.records_layout.setContentsMargins(8, 8, 8, 8)
         self.records_layout.setSpacing(6)
-        self.records_layout.addStretch()
+        self.records_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         self.scroll_area.setWidget(self.records_container)
         
@@ -93,6 +95,7 @@ class TableFeedingRecord(QFrame):
         """创建单条记录项"""
         item = QFrame()
         item.setObjectName("recordItem")
+        item.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         item.setFixedHeight(42)
         
         layout = QHBoxLayout(item)
@@ -141,7 +144,7 @@ class TableFeedingRecord(QFrame):
     # 5. 清空记录
     def clear_records(self):
         """清空所有记录"""
-        while self.records_layout.count() > 1:
+        while self.records_layout.count() > 0:
             item = self.records_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
@@ -156,10 +159,14 @@ class TableFeedingRecord(QFrame):
         Args:
             records: 记录列表 [{'timestamp': datetime, 'weight': float}, ...]
         """
+        logger.info(f"TableFeedingRecord.set_records: 收到 {len(records)} 条记录")
         self.clear_records()
         
-        for record in records:
+        # 反转记录列表，让最新的记录显示在最上面
+        for record in reversed(records):
             self.add_record(record['timestamp'], record['weight'])
+        
+        logger.info(f"TableFeedingRecord: 添加完成，当前 records_layout.count()={self.records_layout.count()}")
     
     # 7. 应用样式
     def apply_styles(self):

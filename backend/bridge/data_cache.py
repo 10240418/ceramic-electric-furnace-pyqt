@@ -44,13 +44,34 @@ class DataCache:
         self._sensor_lock = RLock()
         self._batch_lock = RLock()
         
+        # 上一次有效的弧压值（用于过滤0值跳动）
+        self._last_valid_arc_voltage = {'U': 0.0, 'V': 0.0, 'W': 0.0}
+        
         logger.info("数据缓存管理器已初始化")
         logger.info(f"   - 弧流历史缓存: {self._arc_history.maxlen} 条")
         logger.info(f"   - 传感器历史缓存: {self._sensor_history.maxlen} 条")
     
-    # 3. 存储弧流数据（线程安全）
+    # 3. 存储弧流数据（线程安全，过滤弧压0值）
     def set_arc_data(self, data: Dict[str, Any]):
         with self._arc_lock:
+            # 处理弧压数据：如果为0，使用上一次有效值
+            arc_voltage = data.get('arc_voltage', {})
+            if arc_voltage:
+                processed_voltage = {}
+                for phase in ['U', 'V', 'W']:
+                    voltage = arc_voltage.get(phase, 0)
+                    if voltage > 0:
+                        # 有效值，更新缓存
+                        self._last_valid_arc_voltage[phase] = voltage
+                        processed_voltage[phase] = voltage
+                    else:
+                        # 0值，使用上一次有效值
+                        processed_voltage[phase] = self._last_valid_arc_voltage[phase]
+                
+                # 更新数据中的弧压为处理后的值
+                data = data.copy()
+                data['arc_voltage'] = processed_voltage
+            
             self._latest_arc_data = data.copy()
             self._arc_history.append({
                 'data': data.copy(),
