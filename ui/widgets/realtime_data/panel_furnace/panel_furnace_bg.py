@@ -50,25 +50,25 @@ class PanelFurnaceBg(QFrame):
         electrode_container = QWidget()
         electrode_container.setStyleSheet("background: transparent;")
         electrode_layout = QVBoxLayout(electrode_container)
-        electrode_layout.setContentsMargins(16, 0, 16, 0)  # 添加左右 16px 边距
+        electrode_layout.setContentsMargins(16, 0, 16, 8)  # 左右 16px，底部 8px（容纳2#电极阴影）
         electrode_layout.setSpacing(16)
         
-        # 上排：1# 和 2# 电极
+        # 上排：1# 和 3# 电极（交换了2和3的位置）
         top_row = QHBoxLayout()
         top_row.addStretch(1)
         self.electrode_card_1 = CardElectrode(1)
         top_row.addWidget(self.electrode_card_1)
         top_row.addSpacing(40)
-        self.electrode_card_2 = CardElectrode(2)
-        top_row.addWidget(self.electrode_card_2)
+        self.electrode_card_3 = CardElectrode(3)
+        top_row.addWidget(self.electrode_card_3)
         top_row.addStretch(1)
         electrode_layout.addLayout(top_row)
         
-        # 下排：3# 电极 (居中)
+        # 下排：2# 电极 (居中)
         bottom_row = QHBoxLayout()
         bottom_row.addStretch(1)
-        self.electrode_card_3 = CardElectrode(3)
-        bottom_row.addWidget(self.electrode_card_3)
+        self.electrode_card_2 = CardElectrode(2)
+        bottom_row.addWidget(self.electrode_card_2)
         bottom_row.addStretch(1)
         electrode_layout.addLayout(bottom_row)
         
@@ -76,7 +76,7 @@ class PanelFurnaceBg(QFrame):
         
         # 底部：功率能耗卡片（右下角）
         bottom_layout = QHBoxLayout()
-        bottom_layout.setContentsMargins(16, 0, 16, 0)  # 添加左右 16px 边距
+        bottom_layout.setContentsMargins(16, 0, 12, 0)  # 右边距12px
         bottom_layout.addStretch(1)
         self.power_energy_card = CardPowerEnergy()
         bottom_layout.addWidget(self.power_energy_card)
@@ -161,7 +161,7 @@ class PanelFurnaceBg(QFrame):
         
         self.setStyleSheet(f"""
             QFrame#furnaceContainer {{
-                background: {colors.BG_DARK};
+                background: {colors.BG_CARD};
                 border: 1px solid {colors.BORDER_DARK};
                 border-radius: 8px;
             }}

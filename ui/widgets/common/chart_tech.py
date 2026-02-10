@@ -58,7 +58,7 @@ class ChartTech(QFrame):
         self.setStyleSheet(f"""
             QFrame {{
                 background: {colors.CARD_BG};
-                border: 1px solid {colors.BORDER_GLOW};
+                border: 1px solid {colors.BORDER_DARK};
                 border-radius: 6px;
             }}
         """)

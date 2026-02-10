@@ -60,8 +60,8 @@ _db1_running = False
 _db32_running = False
 _status_running = False
 
-# DB1 轮询间隔 (秒) - 可动态修改
-_db1_interval: float = 0.5  # 默认0.5s
+# DB1 轮询间隔 (秒) - 可动态修改 (默认值从 .env 读取)
+_db1_interval: float = settings.db1_polling_interval
 
 # 批量写入缓存 (与旧架构保持一致)
 _arc_buffer_count = 0
@@ -237,7 +237,7 @@ async def _db32_sensor_polling_loop(
     error_count = 0  # 连续错误计数器
     MAX_ERROR_COUNT = 10  # 最大错误次数，超过后固定30s
     FIXED_WAIT_TIME = 30  # 固定等待时间（秒）
-    interval = 0.5  # 固定 0.5s (1秒2次轮询)
+    interval = settings.db32_polling_interval  # 从 .env 配置读取
     
     logger.info(f"DB32 传感器轮询已启动 (间隔: {interval}s)")
     
@@ -404,7 +404,7 @@ async def _status_polling_loop(
     error_count = 0  # 连续错误计数器
     MAX_ERROR_COUNT = 10  # 最大错误次数，超过后固定30s
     FIXED_WAIT_TIME = 30  # 固定等待时间（秒）
-    interval = 5.0  # 固定 5s
+    interval = settings.status_polling_interval  # 从 .env 配置读取
     
     logger.info(f"状态轮询已启动 (DB30+DB41, 间隔: {interval}s)")
     
@@ -586,11 +586,11 @@ def switch_db1_speed(high_speed: bool):
     global _db1_interval
     
     if high_speed:
-        _db1_interval = 0.5
-        logger.info("DB1 轮询切换到高速模式 (0.5s)")
+        _db1_interval = settings.db1_polling_interval
+        logger.info(f"DB1 轮询切换到高速模式 ({_db1_interval}s)")
     else:
-        _db1_interval = 5.0
-        logger.info("DB1 轮询切换到低速模式 (5.0s)")
+        _db1_interval = settings.db1_idle_polling_interval
+        logger.info(f"DB1 轮询切换到低速模式 ({_db1_interval}s)")
 
 
 def get_polling_loops_status():

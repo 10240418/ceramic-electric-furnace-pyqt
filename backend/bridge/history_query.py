@@ -864,9 +864,181 @@ class HistoryQueryService:
                 "message": f"删除失败: {str(e)}",
                 "batch_code": batch_code
             }
+    
+    # 17. 查询报警记录（按报警类型过滤）
+    def query_alarm_records(
+        self,
+        alarm_type: Optional[str] = None,
+        param_name: Optional[str] = None,
+        level: Optional[str] = None,
+        batch_code: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        查询报警记录 (从 alarm_logs measurement)
+        
+        Args:
+            alarm_type: 报警类型过滤 (arc_current/arc_voltage/electrode_depth/cooling_water/filter)
+            param_name: 参数名过滤 (如 arc_current_u, cooling_pressure_shell 等)
+            level: 报警级别 (warning/alarm)
+            batch_code: 批次号过滤
+            start_time: 开始时间 (北京时间，可选，默认24小时前)
+            end_time: 结束时间 (北京时间，可选，默认当前)
+            limit: 最大返回数量
+            
+        Returns:
+            报警记录列表 [{
+                'timestamp': str (北京时间),
+                'device_id': str,
+                'alarm_type': str,
+                'level': str,
+                'param_name': str,
+                'value': float,
+                'threshold': float,
+                'message': str,
+                'phase': str
+            }, ...]
+        """
+        try:
+            # 时间处理
+            if start_time is None:
+                start_time = datetime.now() - timedelta(hours=24)
+            if end_time is None:
+                end_time = datetime.now()
+            
+            start_utc = self._beijing_to_utc(start_time)
+            end_utc = self._beijing_to_utc(end_time)
+            
+            start_iso = start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+            end_iso = end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            # 构建过滤条件
+            filters = ['r["_measurement"] == "alarm_logs"']
+            
+            if alarm_type:
+                filters.append(f'r["alarm_type"] == "{alarm_type}"')
+            if level:
+                filters.append(f'r["level"] == "{level}"')
+            if batch_code:
+                filters.append(f'r["batch_code"] == "{batch_code}"')
+            
+            filter_clause = " and ".join(filters)
+            
+            query = f'''
+            from(bucket: "{settings.influx_bucket}")
+              |> range(start: {start_iso}, stop: {end_iso})
+              |> filter(fn: (r) => {filter_clause})
+              |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+              |> sort(columns: ["_time"], desc: true)
+              |> limit(n: {limit})
+            '''
+            
+            result = self.query_api.query(query)
+            
+            records = []
+            for table in result:
+                for record in table.records:
+                    record_param_name = record.values.get("param_name", "")
+                    
+                    # 参数名过滤 (模糊匹配)
+                    if param_name and param_name not in record_param_name:
+                        continue
+                    
+                    # 提取相位信息
+                    phase = self._extract_phase_from_param(record_param_name)
+                    
+                    utc_time = record.get_time()
+                    beijing_time = self._utc_to_beijing(utc_time)
+                    
+                    records.append({
+                        'timestamp': beijing_time,
+                        'device_id': record.values.get("device_id", ""),
+                        'alarm_type': record.values.get("alarm_type", ""),
+                        'level': record.values.get("level", ""),
+                        'param_name': record_param_name,
+                        'value': record.values.get("value", 0),
+                        'threshold': record.values.get("threshold", 0),
+                        'message': record.values.get("message", ""),
+                        'phase': phase
+                    })
+            
+            logger.info(f"查询到 {len(records)} 条报警记录 (type={alarm_type}, param={param_name})")
+            return records
+            
+        except Exception as e:
+            logger.error(f"查询报警记录失败: {e}", exc_info=True)
+            return []
+    
+    # 18. 查询报警统计（按类型分组统计数量）
+    def query_alarm_statistics(
+        self,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None
+    ) -> Dict[str, int]:
+        """
+        查询报警统计数据
+        
+        Args:
+            start_time: 开始时间 (北京时间)
+            end_time: 结束时间 (北京时间)
+            
+        Returns:
+            {'arc_current': 5, 'arc_voltage': 2, 'electrode_depth': 1, ...}
+        """
+        try:
+            if start_time is None:
+                start_time = datetime.now() - timedelta(hours=24)
+            if end_time is None:
+                end_time = datetime.now()
+            
+            start_utc = self._beijing_to_utc(start_time)
+            end_utc = self._beijing_to_utc(end_time)
+            
+            start_iso = start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+            end_iso = end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            query = f'''
+            from(bucket: "{settings.influx_bucket}")
+              |> range(start: {start_iso}, stop: {end_iso})
+              |> filter(fn: (r) => r["_measurement"] == "alarm_logs")
+              |> filter(fn: (r) => r["_field"] == "value")
+              |> group(columns: ["alarm_type"])
+              |> count()
+            '''
+            
+            result = self.query_api.query(query)
+            
+            stats = {}
+            for table in result:
+                for record in table.records:
+                    alarm_type = record.values.get("alarm_type", "unknown")
+                    count = record.get_value()
+                    stats[alarm_type] = count
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"查询报警统计失败: {e}")
+            return {}
+    
+    # 19. 从参数名中提取相位
+    @staticmethod
+    def _extract_phase_from_param(param_name: str) -> str:
+        """从参数名中提取相位信息"""
+        param_lower = param_name.lower()
+        if param_lower.endswith("_u") or param_lower.endswith("_1"):
+            return "1#"
+        elif param_lower.endswith("_v") or param_lower.endswith("_2"):
+            return "2#"
+        elif param_lower.endswith("_w") or param_lower.endswith("_3"):
+            return "3#"
+        else:
+            return "-"
 
 
-# 16. 获取历史查询服务单例
+# 20. 获取历史查询服务单例
 def get_history_query_service() -> HistoryQueryService:
     return HistoryQueryService.get_instance()
 

@@ -100,6 +100,7 @@ a = Analysis(
         'scipy',  # 不需要
         'PIL',  # 不需要
         'tkinter',  # 不需要
+        'PyQt5',  # 排除 PyQt5 (与 PyQt6 冲突)
         'pyqtgraph.opengl',  # 排除 OpenGL 模块（会导致崩溃）
         'pyqtgraph.examples',  # 排除示例
         'OpenGL',  # 排除 OpenGL
@@ -118,18 +119,18 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='1号电炉',
+    name='3号电炉',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # 不显示控制台窗口
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # 可以添加图标文件路径
+    icon=None,
 )
 
 # 6. 收集所有文件到 dist 目录
@@ -141,6 +142,6 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='1号电炉',
+    name='3号电炉',
 )
 

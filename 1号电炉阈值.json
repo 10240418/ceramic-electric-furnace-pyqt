@@ -1,0 +1,100 @@
+{
+  "electrode_depth_u": {
+    "warning_min": 124.0,
+    "warning_max": 2148.0,
+    "alarm_min": 124.0,
+    "alarm_max": 2148.0,
+    "enabled": true
+  },
+  "electrode_depth_v": {
+    "warning_min": 150.0,
+    "warning_max": 2143.0,
+    "alarm_min": 150.0,
+    "alarm_max": 2143.0,
+    "enabled": true
+  },
+  "electrode_depth_w": {
+    "warning_min": 224.0,
+    "warning_max": 2245.0,
+    "alarm_min": 224.0,
+    "alarm_max": 2245.0,
+    "enabled": true
+  },
+  "arc_current_u": {
+    "warning_min": 2000.0,
+    "warning_max": 6000.0,
+    "alarm_min": 1500.0,
+    "alarm_max": 8000.0,
+    "enabled": true
+  },
+  "arc_current_v": {
+    "warning_min": 2000.0,
+    "warning_max": 6000.0,
+    "alarm_min": 1500.0,
+    "alarm_max": 8000.0,
+    "enabled": true
+  },
+  "arc_current_w": {
+    "warning_min": 2000.0,
+    "warning_max": 6000.0,
+    "alarm_min": 1500.0,
+    "alarm_max": 8000.0,
+    "enabled": true
+  },
+  "arc_voltage_u": {
+    "warning_min": 0.0,
+    "warning_max": 112.0,
+    "alarm_min": 0.0,
+    "alarm_max": 150.0,
+    "enabled": true
+  },
+  "arc_voltage_v": {
+    "warning_min": 0.0,
+    "warning_max": 150.0,
+    "alarm_min": 0.0,
+    "alarm_max": 150.0,
+    "enabled": true
+  },
+  "arc_voltage_w": {
+    "warning_min": 0.0,
+    "warning_max": 150.0,
+    "alarm_min": 0.0,
+    "alarm_max": 150.0,
+    "enabled": true
+  },
+  "cooling_pressure_shell": {
+    "warning_min": 8.0,
+    "warning_max": 55.0,
+    "alarm_min": 4.0,
+    "alarm_max": 60.0,
+    "enabled": true
+  },
+  "cooling_pressure_cover": {
+    "warning_min": 8.0,
+    "warning_max": 55.0,
+    "alarm_min": 4.0,
+    "alarm_max": 60.0,
+    "enabled": true
+  },
+  "cooling_flow_shell": {
+    "warning_min": 0.0,
+    "warning_max": 28.0,
+    "alarm_min": 23.0,
+    "alarm_max": 30.0,
+    "enabled": true
+  },
+  "cooling_flow_cover": {
+    "warning_min": 0.0,
+    "warning_max": 28.0,
+    "alarm_min": 0.0,
+    "alarm_max": 30.0,
+    "enabled": true
+  },
+  "filter_pressure_diff": {
+    "warning_min": null,
+    "warning_max": 50.0,
+    "alarm_min": null,
+    "alarm_max": 50.0,
+    "enabled": true
+  }
+}

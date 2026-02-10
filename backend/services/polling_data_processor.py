@@ -436,6 +436,14 @@ def process_modbus_data(raw_data: bytes):
         except Exception as bridge_err:
             print(f" 写入 DataCache/DataBridge 失败: {bridge_err}")
         
+        # 3.2 报警检查: 检查电极深度/冷却水压力/过滤器压差是否超过报警阈值
+        try:
+            from backend.services.alarm_checker import check_sensor_data_alarms
+            from backend.services.polling_service import ensure_batch_code as _get_batch
+            check_sensor_data_alarms(parsed, furnace_shell_pressure, furnace_cover_pressure, batch_code=_get_batch() or "")
+        except Exception as alarm_err:
+            print(f" 报警检查失败(DB32): {alarm_err}")
+        
         # ========================================
         # 4. 蝶阀开度计算服务 (新增 - 滑动窗口 + 自动校准)
         # ========================================
@@ -623,6 +631,14 @@ def process_arc_data(raw_data: bytes, batch_code: str):
             
         except Exception as bridge_err:
             print(f" 写入 DataCache/DataBridge 失败: {bridge_err}")
+        
+        # 5.2 报警检查: 检查弧流弧压是否超过报警阈值
+        try:
+            from backend.services.alarm_checker import check_arc_data_alarms, check_emergency_stop_alarm
+            check_arc_data_alarms(arc_cache, batch_code=batch_code or "")
+            check_emergency_stop_alarm(parsed, batch_code=batch_code or "")
+        except Exception as alarm_err:
+            print(f" 报警检查失败(DB1): {alarm_err}")
         
         # 6. 使用变化检测转换为 InfluxDB 字段
         now = datetime.now(timezone.utc)

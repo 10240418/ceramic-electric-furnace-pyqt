@@ -8,16 +8,18 @@ from ui.styles.themes import ThemeManager
 from ui.widgets.common.label_blinking import LabelBlinkingFade
 from ui.utils.alarm_checker import get_alarm_checker
 from ui.utils.alarm_sound_manager import get_alarm_sound_manager
+from loguru import logger
 
 
 class CardCooling(QFrame):
     """冷却水卡片组件（新布局：左对齐，3行显示）"""
     
     # 1. 初始化卡片
-    def __init__(self, title: str, items: list = None, parent=None):
+    def __init__(self, title: str, items: list = None, alarm_id: str = None, parent=None):
         super().__init__(parent)
         self.theme_manager = ThemeManager.instance()
         self.title = title
+        self.alarm_id = alarm_id or title  # 报警源标识符（英文）
         self.items = items or []
         self.item_widgets = []
         
@@ -28,9 +30,6 @@ class CardCooling(QFrame):
         # 闪烁定时器
         self.blink_timer = QTimer()
         self.blink_timer.timeout.connect(self.toggle_blink)
-        
-        # 报警声音播放计数器
-        self.alarm_sound_counter = 0
         
         self.init_ui()
         self.apply_styles()
@@ -107,55 +106,28 @@ class CardCooling(QFrame):
         
         main_layout.addWidget(self.content_widget)
     
-    # 3. 创建数据项（2行布局：图标+标签、数值+单位）
+    # 3. 创建数据项（2行布局：标签、数值+单位）
     def create_data_item(self, item: dict) -> QWidget:
         item_widget = QWidget()
         item_layout = QVBoxLayout(item_widget)
-        item_layout.setContentsMargins(0, 4, 0, 4)  # 上下内边距：8px -> 4px
-        item_layout.setSpacing(4)  # 标签和数值间距：6px -> 4px
+        item_layout.setContentsMargins(0, 4, 0, 4)
+        item_layout.setSpacing(4)
         
         colors = self.theme_manager.get_colors()
         alarm_status = self.get_alarm_status(item)
         is_warning = alarm_status == 'warning'
         is_alarm = alarm_status == 'alarm'
         
-        # 第 1 行：图标 + 标签
+        # 第 1 行：标签
         label_row = QWidget()
         label_layout = QHBoxLayout(label_row)
         label_layout.setContentsMargins(0, 0, 0, 0)
         label_layout.setSpacing(6)
         
-        # 图标
-        icon_label = QLabel(item['icon'])
-        icon_label.setFixedSize(20, 20)
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        if is_alarm:
-            icon_color = colors.STATUS_ALARM
-        elif is_warning:
-            icon_color = colors.STATUS_WARNING
-        else:
-            icon_color = colors.TEXT_SECONDARY
-        icon_label.setStyleSheet(f"""
-            QLabel {{
-                color: {icon_color};
-                font-size: 16px;
-                border: none;
-                background: transparent;
-            }}
-        """)
-        label_layout.addWidget(icon_label)
-        
-        # 标签
+        # 标签（使用 objectName，颜色由父级 QSS 控制）
         label_widget = QLabel(item['label'])
+        label_widget.setObjectName("dataLabel")
         label_widget.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        label_widget.setStyleSheet(f"""
-            QLabel {{
-                color: {colors.TEXT_PRIMARY};
-                font-size: 16px;
-                border: none;
-                background: transparent;
-            }}
-        """)
         label_layout.addWidget(label_widget)
         label_layout.addStretch()
         
@@ -174,11 +146,12 @@ class CardCooling(QFrame):
             value_color = colors.STATUS_WARNING
             unit_color = colors.STATUS_WARNING
         else:
-            value_color = colors.GLOW_PRIMARY
-            unit_color = colors.TEXT_SECONDARY
+            value_color = colors.TEXT_ACCENT
+            unit_color = colors.TEXT_PRIMARY
         
-        # 数值
+        # 数值（使用 objectName，默认颜色由父级 QSS 控制）
         value_label = LabelBlinkingFade(item['value'])
+        value_label.setObjectName("dataValue")
         value_label.set_blinking(is_alarm)
         value_label.set_blink_color(colors.STATUS_ALARM)
         value_label.set_normal_color(value_color)
@@ -187,29 +160,21 @@ class CardCooling(QFrame):
         font = QFont("Roboto Mono", 26)
         font.setBold(True)
         value_label.setFont(font)
-        value_label.setStyleSheet(f"""
-            QLabel {{
-                color: {value_color};
-                border: none;
-                background: transparent;
-            }}
-        """)
+        # 报警时设置子级样式覆盖父级默认色
+        if is_alarm or is_warning:
+            value_label.setStyleSheet(f"QLabel {{ color: {value_color}; border: none; background: transparent; }}")
         value_layout.addWidget(value_label)
         
-        # 单位
+        # 单位（使用 objectName，默认颜色由父级 QSS 控制）
         unit_label = LabelBlinkingFade(item['unit'])
+        unit_label.setObjectName("dataUnit")
         unit_label.set_blinking(is_alarm)
         unit_label.set_blink_color(colors.STATUS_ALARM)
-        unit_label.set_normal_color(colors.TEXT_PRIMARY if not (is_alarm or is_warning) else unit_color)
+        unit_label.set_normal_color(unit_color)
         unit_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        unit_label.setStyleSheet(f"""
-            QLabel {{
-                color: {colors.TEXT_PRIMARY if not (is_alarm or is_warning) else unit_color};
-                font-size: 16px;
-                border: none;
-                background: transparent;
-            }}
-        """)
+        # 报警时设置子级样式覆盖父级默认色
+        if is_alarm or is_warning:
+            unit_label.setStyleSheet(f"QLabel {{ color: {unit_color}; font-size: 16px; border: none; background: transparent; }}")
         value_layout.addWidget(unit_label)
         value_layout.addStretch()
         
@@ -239,34 +204,24 @@ class CardCooling(QFrame):
     
     # 5. 更新数据项
     def update_items(self, items: list):
-        """
-        更新数据项
-        
-        Args:
-            items: 数据项列表 [{"icon": "💧", "label": "冷却水流速:", "value": "12.50", "unit": "m³/h", "alarm_param": None}, ...]
-        """
-        # 检查是否有报警
         old_has_alarm = self.has_alarm
+        
+        # 判断是否有报警（检查所有项）
         self.has_alarm = any(self.get_alarm_status(item) == 'alarm' for item in items)
         
-        # 只有在"开始记录"时才播放报警声音和闪烁边框
+        # 如果未记录，不报警
         if not self._is_recording():
             self.has_alarm = False
         
-        # 报警声音播放逻辑
-        if self.has_alarm:
-            if not old_has_alarm:
-                self.play_alarm_sound()
-                self.alarm_sound_counter = 0
-            else:
-                self.alarm_sound_counter += 1
-                if self.alarm_sound_counter >= 10:
-                    self.play_alarm_sound()
-                    self.alarm_sound_counter = 0
-        else:
-            self.alarm_sound_counter = 0
+        # 播放报警声音（从无报警变为有报警）
+        if not old_has_alarm and self.has_alarm:
+            sound_manager = get_alarm_sound_manager()
+            sound_manager.play_alarm(self.alarm_id)
+        elif old_has_alarm and not self.has_alarm:
+            sound_manager = get_alarm_sound_manager()
+            sound_manager.stop_alarm(self.alarm_id)
         
-        # 启动或停止闪烁
+        # 启动或停止闪烁定时器
         if self.has_alarm and not self.blink_timer.isActive():
             self.blink_timer.start(500)
         elif not self.has_alarm and self.blink_timer.isActive():
@@ -341,45 +296,16 @@ class CardCooling(QFrame):
             if is_alarm:
                 value_color = colors.STATUS_ALARM
                 unit_color = colors.STATUS_ALARM
-                icon_color = colors.STATUS_ALARM
             elif is_warning:
                 value_color = colors.STATUS_WARNING
                 unit_color = colors.STATUS_WARNING
-                icon_color = colors.STATUS_WARNING
             else:
-                value_color = colors.GLOW_PRIMARY
+                value_color = colors.TEXT_ACCENT
                 unit_color = colors.TEXT_PRIMARY
-                icon_color = colors.TEXT_PRIMARY
             
-            # 更新图标和标签颜色（主题变化时需要更新）
-            all_labels = item_widget.findChildren(QLabel)
-            for label in all_labels:
-                # 跳过 LabelBlinkingFade 类型（单独处理）
-                if isinstance(label, LabelBlinkingFade):
-                    continue
-                text = label.text()
-                # 图标（emoji）
-                if text in ["💧", "💦", "🌊", "🔧"]:
-                    label.setStyleSheet(f"""
-                        QLabel {{
-                            color: {icon_color};
-                            font-size: 16px;
-                            border: none;
-                            background: transparent;
-                        }}
-                    """)
-                # 标签文字
-                elif ":" in text or "冷却水" in text or "过滤器" in text:
-                    label.setStyleSheet(f"""
-                        QLabel {{
-                            color: {colors.TEXT_PRIMARY};
-                            font-size: 16px;
-                            border: none;
-                            background: transparent;
-                        }}
-                    """)
+            # 标签颜色由父级 QSS 的 QLabel#dataLabel 规则控制，无需单独设置
             
-            # 查找并更新数值和单位标签（数值和单位在同一行）
+            # 查找并更新数值和单位标签
             blinking_labels = item_widget.findChildren(LabelBlinkingFade)
             if len(blinking_labels) >= 2:
                 # 第一个是数值
@@ -388,6 +314,11 @@ class CardCooling(QFrame):
                 value_label.set_blinking(is_alarm)
                 value_label.set_normal_color(value_color)
                 value_label.set_blink_color(colors.STATUS_ALARM)
+                # 报警/警告时子级样式覆盖父级默认色，正常时清除让父级 QSS 生效
+                if is_alarm or is_warning:
+                    value_label.setStyleSheet(f"QLabel {{ color: {value_color}; border: none; background: transparent; }}")
+                else:
+                    value_label.setStyleSheet("")
                 
                 # 第二个是单位
                 unit_label = blinking_labels[1]
@@ -395,6 +326,10 @@ class CardCooling(QFrame):
                 unit_label.set_blinking(is_alarm)
                 unit_label.set_normal_color(unit_color)
                 unit_label.set_blink_color(colors.STATUS_ALARM)
+                if is_alarm or is_warning:
+                    unit_label.setStyleSheet(f"QLabel {{ color: {unit_color}; font-size: 16px; border: none; background: transparent; }}")
+                else:
+                    unit_label.setStyleSheet("")
     
     # 8. 切换闪烁状态
     def toggle_blink(self):
@@ -402,11 +337,7 @@ class CardCooling(QFrame):
         self.blink_visible = not self.blink_visible
         self.apply_styles()
     
-    # 9. 播放报警声音
-    def play_alarm_sound(self):
-        """播放报警声音（通过全局管理器）"""
-        sound_manager = get_alarm_sound_manager()
-        sound_manager.play_alarm()
+
     
     # 10. 检查是否正在记录
     def _is_recording(self) -> bool:
@@ -427,13 +358,13 @@ class CardCooling(QFrame):
             if self.blink_visible:
                 border_color = colors.STATUS_ALARM
             else:
-                border_color = colors.BG_LIGHT
+                border_color = colors.BG_CARD
         else:
-            border_color = colors.BORDER_GLOW
+            border_color = colors.BORDER_DARK
         
         self.setStyleSheet(f"""
-            QFrame {{
-                background: {colors.BG_LIGHT};
+            CardCooling {{
+                background: {colors.BG_CARD};
                 border: 1px solid {border_color};
                 border-radius: 6px;
             }}
@@ -447,7 +378,7 @@ class CardCooling(QFrame):
                 border: none;
             }}
             QFrame#titleDivider {{
-                background: {colors.BORDER_ACCENT};
+                background: {colors.BORDER_DARK};
                 border: none;
                 max-height: 1px;
                 min-height: 1px;
@@ -464,15 +395,44 @@ class CardCooling(QFrame):
                 border: none;
             }}
             QFrame#dataDivider {{
-                background: {colors.BORDER_ACCENT};
+                background: {colors.BORDER_DARK};
                 border: none;
                 max-height: 1px;
                 min-height: 1px;
             }}
+            QLabel#dataLabel {{
+                color: {colors.TEXT_PRIMARY};
+                font-size: 16px;
+                border: none;
+                background: transparent;
+            }}
+            QLabel#dataValue {{
+                color: {colors.TEXT_ACCENT};
+                border: none;
+                background: transparent;
+            }}
+            QLabel#dataUnit {{
+                color: {colors.TEXT_PRIMARY};
+                font-size: 16px;
+                border: none;
+                background: transparent;
+            }}
         """)
+        
+        # 添加阴影效果（1px，颜色为border颜色）
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        from PyQt6.QtGui import QColor
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(4)
+        shadow.setXOffset(2)
+        shadow.setYOffset(2)
+        shadow.setColor(QColor(border_color))
+        self.setGraphicsEffect(shadow)
     
     # 12. 主题变化时重新应用样式
     def on_theme_changed(self):
+        # 先更新父级 QSS（包含所有 objectName 的默认颜色规则）
         self.apply_styles()
-        self.update_items(self.items)
+        # 再更新子标签（报警覆盖色），不走 update_items 避免重复 apply_styles
+        self._update_existing_items()
 

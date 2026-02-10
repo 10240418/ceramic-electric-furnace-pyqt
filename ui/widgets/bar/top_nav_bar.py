@@ -34,7 +34,7 @@ class TopNavBar(QFrame):
         self.is_settings_active = False  # 设置页面是否激活
         
         # 导航项列表
-        self.nav_items = ['3# 电炉', '历史曲线', '状态监控', '泵房/料仓']
+        self.nav_items = ['实时数据', '历史曲线', '状态监控', '报警记录', '泵房/料仓']
         self.nav_buttons = []
         
         # 设置按钮
@@ -72,14 +72,10 @@ class TopNavBar(QFrame):
         
         # 主布局
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(20, 10, 20, 10)
-        layout.setSpacing(10)  # 导航按钮之间的间距：从12px减小到10px (减小2px)
+        layout.setContentsMargins(10, 10, 20, 10)  # 左边距10px
+        layout.setSpacing(7)  # 导航按钮之间的间距7px
         
-        # Logo 和标题
-        logo_widget = self.create_logo()
-        layout.addWidget(logo_widget)
-        
-        layout.addSpacing(8)
+        # 不再添加 Logo 和标题，直接从导航按钮开始
         
         # 导航按钮
         for i, nav_text in enumerate(self.nav_items):
@@ -148,7 +144,7 @@ class TopNavBar(QFrame):
         btn = QPushButton(text)
         btn.setObjectName(f"nav_btn_{index}")
         btn.setFixedHeight(36)
-        btn.setMinimumWidth(98)  # 从100px减小到98px (减小2px)
+        btn.setMinimumWidth(88)  # 88px
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.clicked.connect(lambda: self.on_nav_clicked(index))
         return btn
@@ -248,11 +244,11 @@ class TopNavBar(QFrame):
     
     # 9. 设置按钮点击处理
     def on_settings_clicked(self):
-        # 发送特殊索引 4 表示设置页面（因为现在有4个导航页面了）
+        # 发送特殊索引 5 表示设置页面（因为现在有5个导航页面了）
         self.current_nav_index = -1  # 设置页面不算在导航索引中
         self.is_settings_active = True  # 激活设置页面
         self.apply_styles()
-        self.nav_changed.emit(4)
+        self.nav_changed.emit(5)
     
     # 10. 更新状态显示
     def update_status(self):
@@ -284,18 +280,18 @@ class TopNavBar(QFrame):
         if not widget:
             return
         
-        tm = self.theme_manager
+        colors = self.theme_manager.get_colors()
         
         if is_ok:
-            # 正常：使用 GLOW_PRIMARY 主题配色（深色主题青色，浅色主题深绿）
+            # 正常：使用 TEXT_ACCENT 强调色
             widget.setStyleSheet(f"""
                 QWidget {{
                     background: transparent;
-                    border: 1px solid {tm.border_glow()};
+                    border: 1px solid {colors.TEXT_ACCENT};
                     border-radius: 4px;
                 }}
                 QLabel {{
-                    color: {tm.border_glow()};
+                    color: {colors.TEXT_ACCENT};
                     background: transparent;
                     border: none;
                 }}
@@ -305,11 +301,11 @@ class TopNavBar(QFrame):
             widget.setStyleSheet(f"""
                 QWidget {{
                     background: transparent;
-                    border: 1px solid {tm.status_alarm()};
+                    border: 1px solid {colors.STATUS_ALARM};
                     border-radius: 4px;
                 }}
                 QLabel {{
-                    color: {tm.status_alarm()};
+                    color: {colors.STATUS_ALARM};
                     background: transparent;
                     border: none;
                 }}
@@ -341,33 +337,23 @@ class TopNavBar(QFrame):
     # 15. 应用样式
     def apply_styles(self):
         tm = self.theme_manager
+        colors = tm.get_colors()
         
-        # 导航栏容器样式
+        # 导航栏容器样式（使用 BG_CARD 背景色）
         self.setStyleSheet(f"""
             QFrame#top_nav_bar {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 {tm.bg_dark()}, stop:1 {tm.bg_medium()});
-                border-bottom: 2px solid {tm.border_glow()};
-            }}
-            
-            /* Logo 竖条 */
-            QFrame#logo_bar {{
-                background: {tm.border_glow()};
-                border-radius: 2px;
-            }}
-            
-            /* 标题 */
-            QLabel#nav_title {{
-                color: {tm.border_glow()};
+                background: {colors.BG_CARD};
+                border-bottom: 2px solid {colors.BORDER_DARK};
             }}
             
             /* 窗口控制按钮 */
             QPushButton#btn_minimize,
             QPushButton#btn_fullscreen {{
                 background: {tm.bg_light()};
-                color: {tm.text_primary()};
+                color: {colors.TEXT_PRIMARY};
                 border: 1px solid {tm.border_medium()};
                 border-radius: 4px;
+                font-family: 'Microsoft YaHei';
                 font-size: 16px;
                 font-weight: bold;
             }}
@@ -375,8 +361,8 @@ class TopNavBar(QFrame):
             QPushButton#btn_minimize:hover,
             QPushButton#btn_fullscreen:hover {{
                 background: {tm.bg_medium()};
-                border: 1px solid {tm.border_glow()};
-                color: {tm.border_glow()};
+                border: 1px solid {tm.border_dark()};
+                color: {colors.TEXT_PRIMARY};
             }}
             
             QPushButton#btn_exit {{
@@ -384,6 +370,7 @@ class TopNavBar(QFrame):
                 color: {tm.white()};
                 border: 1px solid {tm.status_alarm()};
                 border-radius: 4px;
+                font-family: 'Microsoft YaHei';
                 font-size: 16px;
                 font-weight: bold;
             }}
@@ -415,10 +402,10 @@ class TopNavBar(QFrame):
                 with open(icon_path, 'r', encoding='utf-8') as f:
                     svg_content = f.read()
                 
-                # 根据激活状态设置颜色
+                # 根据激活状态设置颜色（使用 TEXT_PRIMARY）
                 if self.is_settings_active:
-                    # 激活时使用发光色
-                    svg_content = svg_content.replace('fill="currentColor"', f'fill="{tm.border_glow()}"')
+                    # 激活时使用主要文字色
+                    svg_content = svg_content.replace('fill="currentColor"', f'fill="{colors.TEXT_PRIMARY}"')
                 else:
                     # 未激活时使用次要文字色
                     svg_content = svg_content.replace('fill="currentColor"', f'fill="{tm.text_secondary()}"')
@@ -426,45 +413,61 @@ class TopNavBar(QFrame):
                 # 重新加载 SVG
                 self.settings_svg.load(svg_content.encode('utf-8'))
         
-        # 更新导航按钮样式
+        # 更新导航按钮样式（使用 TEXT_PRIMARY）
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        from PyQt6.QtGui import QColor
+        
         for i, btn in enumerate(self.nav_buttons):
             is_selected = (i == self.current_nav_index)
             
             if is_selected:
+                # 选中状态：使用主要文字色 + 遮罩背景 + 黑色边框 + 阴影
                 btn.setStyleSheet(f"""
                     QPushButton {{
-                        background: {tm.border_glow()}15;
-                        color: {tm.text_selected()};
-                        border: 1px solid {tm.border_glow()};
+                        background: rgba(0, 1, 77, 0.1);
+                        color: {colors.TEXT_PRIMARY};
+                        border: 1px solid {colors.BORDER_DARK};
                         border-radius: 4px;
                         padding: 8px 20px;
+                        font-family: 'Microsoft YaHei';
                         font-size: 13px;
                         font-weight: 600;
                     }}
                     
                     QPushButton:hover {{
-                        background: {tm.border_glow()}25;
-                        border: 1px solid {tm.border_glow()};
+                        background: rgba(0, 1, 77, 0.15);
+                        border: 1px solid {colors.BORDER_DARK};
                     }}
                 """)
+                
+                # 选中状态：添加阴影效果
+                shadow = QGraphicsDropShadowEffect()
+                shadow.setBlurRadius(8)  # 模糊半径 8px
+                shadow.setOffset(0, 2)   # Y 偏移 2px
+                shadow.setColor(QColor(colors.TEXT_PRIMARY + '40'))  # 25% 透明度
+                btn.setGraphicsEffect(shadow)
+                
             else:
+                # 未选中状态：使用主要文字色，无阴影
                 btn.setStyleSheet(f"""
                     QPushButton {{
                         background: transparent;
-                        color: {tm.text_secondary()};
+                        color: {colors.TEXT_PRIMARY};
                         border: 1px solid transparent;
                         border-radius: 4px;
                         padding: 8px 20px;
-                        font-size: 13px;
-                        font-weight: 400;
+                        font-family: 'Microsoft YaHei';
+                        font-size: 14px;
+                        font-weight: 500;
                     }}
                     
                     QPushButton:hover {{
                         background: {tm.bg_light()};
-                        border: 1px solid {tm.border_medium()};
-                        color: {tm.text_primary()};
                     }}
                 """)
+                
+                # 未选中状态：移除阴影效果
+                btn.setGraphicsEffect(None)
     
     # 16. 设置当前导航索引
     def set_current_nav(self, index: int):

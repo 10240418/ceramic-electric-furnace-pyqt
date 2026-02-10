@@ -14,10 +14,12 @@ from ui.styles.themes import ThemeManager, Theme
 from ui.styles.qss_styles import QSSStyles
 from ui.widgets.bar.top_nav_bar import TopNavBar
 from ui.pages.page_status import PageStatus
-from ui.pages.page_elec_3 import PageElec3
+from ui.pages.page_realtime import PageRealtime
 from ui.pages.page_pump_hopper import PagePumpHopper
 from ui.pages.page_history_curve import PageHistoryCurve
 from ui.pages.page_settings import PageSettings
+from ui.pages.page_alarm_records import PageAlarmRecords
+from ui.pages.page_alarm_records import PageAlarmRecords
 
 # 导入后端服务管理器
 from backend.bridge.service_manager import ServiceManager
@@ -95,6 +97,16 @@ class MainWindow(QMainWindow):
         # 连接错误信号
         self.data_bridge.error_occurred.connect(self.on_backend_error)
         
+        # 连接高压紧急停电报警信号
+        try:
+            from backend.services.db1.emergency_stop_service import get_emergency_stop_service
+            emergency_service = get_emergency_stop_service()
+            emergency_service.emergency_alarm_triggered.connect(self.on_emergency_alarm_triggered)
+            emergency_service.emergency_alarm_cleared.connect(self.on_emergency_alarm_cleared)
+            logger.info("高压紧急停电报警信号已连接")
+        except Exception as e:
+            logger.error(f"连接高压紧急停电报警信号失败: {e}", exc_info=True)
+        
         # 可以在这里连接更多信号，例如：
         # self.data_bridge.arc_data_updated.connect(self.on_arc_data_updated)
         # self.data_bridge.sensor_data_updated.connect(self.on_sensor_data_updated)
@@ -104,6 +116,29 @@ class MainWindow(QMainWindow):
         """处理后端错误"""
         logger.error(f"后端错误: {error_msg}")
         # 可以在这里显示错误提示给用户
+    
+    # 4. 处理高压紧急停电报警触发
+    def on_emergency_alarm_triggered(self, alarm_data: dict):
+        """高压紧急停电报警触发时显示全局弹窗"""
+        logger.warning(f"[报警] 高压紧急停电报警触发！数据: {alarm_data}")
+        
+        try:
+            # 显示全局报警弹窗（模态对话框，阻塞其他操作）
+            from ui.widgets.common.dialog_emergency_alarm import show_emergency_alarm
+            
+            # 显示弹窗（会阻塞直到用户点击"我已知晓"）
+            show_emergency_alarm(alarm_data, parent=self)
+            
+            logger.info("[报警] 用户已确认高压紧急停电报警")
+        
+        except Exception as e:
+            logger.error(f"显示高压紧急停电报警弹窗失败: {e}", exc_info=True)
+    
+    # 5. 处理高压紧急停电报警解除
+    def on_emergency_alarm_cleared(self):
+        """高压紧急停电报警解除"""
+        logger.info("[报警] 高压紧急停电报警已解除")
+        # 可以在这里添加报警解除的提示（可选）
         
     # 2. 初始化UI
     def init_ui(self):
@@ -149,8 +184,8 @@ class MainWindow(QMainWindow):
     # 3. 创建页面
     def create_pages(self):
         # 页面 0: 3# 电炉（实际页面）
-        self.page_elec_3 = PageElec3()
-        self.page_stack.addWidget(self.page_elec_3)
+        self.page_realtime = PageRealtime()
+        self.page_stack.addWidget(self.page_realtime)
         
         # 页面 1: 历史曲线（实际页面）
         self.page_history_curve = PageHistoryCurve()
@@ -160,11 +195,15 @@ class MainWindow(QMainWindow):
         self.page_status = PageStatus()
         self.page_stack.addWidget(self.page_status)
         
-        # 页面 3: 泵房/料仓（实际页面）
+        # 页面 3: 报警记录（实际页面）
+        self.page_alarm_records = PageAlarmRecords()
+        self.page_stack.addWidget(self.page_alarm_records)
+        
+        # 页面 4: 泵房/料仓（实际页面）
         self.page_pump_hopper = PagePumpHopper()
         self.page_stack.addWidget(self.page_pump_hopper)
         
-        # 页面 4: 系统设置（实际页面）
+        # 页面 5: 系统设置（实际页面）
         self.page_settings = PageSettings()
         self.page_stack.addWidget(self.page_settings)
     
@@ -366,6 +405,17 @@ class MainWindow(QMainWindow):
             logger.info("正在断开信号连接...")
             self.theme_manager.theme_changed.disconnect(self.on_theme_changed)
             self.data_bridge.error_occurred.disconnect(self.on_backend_error)
+            
+            # 断开高压紧急停电报警信号
+            try:
+                from backend.services.db1.emergency_stop_service import get_emergency_stop_service
+                emergency_service = get_emergency_stop_service()
+                emergency_service.emergency_alarm_triggered.disconnect(self.on_emergency_alarm_triggered)
+                emergency_service.emergency_alarm_cleared.disconnect(self.on_emergency_alarm_cleared)
+                logger.info("高压紧急停电报警信号已断开")
+            except Exception as e:
+                logger.warning(f"断开高压紧急停电报警信号失败: {e}")
+            
             logger.info("信号连接已断开")
         except Exception as e:
             logger.warning(f"断开信号连接失败: {e}")

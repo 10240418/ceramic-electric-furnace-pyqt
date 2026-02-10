@@ -157,51 +157,51 @@ class PageHistoryCurve(QWidget):
         
         # 第一行：弧流、弧压、电极高度
         self.chart_arc_current = self._create_chart_with_border(
-            ChartLine(y_label="", accent_color=colors.GLOW_CYAN, show_grid=True),
+            ChartLine(y_label="", accent_color=colors.GLOW_CYAN, show_grid=True, enable_mouse=False),
             "弧流 (KA)"
         )
         grid_layout.addWidget(self.chart_arc_current, 0, 0)
         
         self.chart_arc_voltage = self._create_chart_with_border(
-            ChartLine(y_label="", accent_color=colors.GLOW_CYAN, show_grid=True),
+            ChartLine(y_label="", accent_color=colors.GLOW_CYAN, show_grid=True, enable_mouse=False),
             "弧压 (V)"
         )
         grid_layout.addWidget(self.chart_arc_voltage, 0, 1)
         
         self.chart_electrode_depth = self._create_chart_with_border(
-            ChartLine(y_label="", accent_color=colors.GLOW_CYAN, show_grid=True),
+            ChartLine(y_label="", accent_color=colors.GLOW_CYAN, show_grid=True, enable_mouse=False),
             "电极高度 (mm)"
         )
         grid_layout.addWidget(self.chart_electrode_depth, 0, 2)
         
         # 第二行：功率、能耗、累计投料量
         self.chart_power = self._create_chart_with_border(
-            ChartLine(y_label="", accent_color=colors.GLOW_ORANGE, show_grid=True),
+            ChartLine(y_label="", accent_color=colors.GLOW_ORANGE, show_grid=True, enable_mouse=False),
             "功率 (kW)"
         )
         grid_layout.addWidget(self.chart_power, 1, 0)
         
         self.chart_energy = self._create_chart_with_border(
-            ChartLine(y_label="", accent_color=colors.GLOW_ORANGE, show_grid=True),
+            ChartLine(y_label="", accent_color=colors.GLOW_ORANGE, show_grid=True, enable_mouse=False),
             "能耗 (kWh)"
         )
         grid_layout.addWidget(self.chart_energy, 1, 1)
         
         self.chart_feeding = self._create_chart_with_border(
-            ChartLine(y_label="", accent_color=colors.GLOW_BLUE, show_grid=True),
+            ChartLine(y_label="", accent_color=colors.GLOW_BLUE, show_grid=True, enable_mouse=False),
             "累计投料量 (kg)"
         )
         grid_layout.addWidget(self.chart_feeding, 1, 2)
         
         # 第三行：炉皮冷却水、炉盖冷却水、预留空白
         self.chart_shell_water = self._create_chart_with_border(
-            ChartLine(y_label="", accent_color=colors.GLOW_GREEN, show_grid=True),
+            ChartLine(y_label="", accent_color=colors.GLOW_GREEN, show_grid=True, enable_mouse=False),
             "炉皮冷却水 (m3)"
         )
         grid_layout.addWidget(self.chart_shell_water, 2, 0)
         
         self.chart_cover_water = self._create_chart_with_border(
-            ChartLine(y_label="", accent_color=colors.GLOW_GREEN, show_grid=True),
+            ChartLine(y_label="", accent_color=colors.GLOW_GREEN, show_grid=True, enable_mouse=False),
             "炉盖冷却水 (m3)"
         )
         grid_layout.addWidget(self.chart_cover_water, 2, 1)

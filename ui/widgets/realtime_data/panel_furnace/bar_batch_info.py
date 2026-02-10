@@ -2,7 +2,7 @@
 炉次信息栏组件 - 显示炉次信息和控制按钮
 """
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
-from PyQt6.QtCore import pyqtSignal, QTimer, Qt
+from PyQt6.QtCore import pyqtSignal, Qt
 from ui.styles.themes import ThemeManager
 from ui.widgets.common.button_progress import ProgressButton
 from loguru import logger
@@ -50,11 +50,12 @@ class BarBatchInfo(QFrame):
         self.info_label.setObjectName("batchInfoLabel")
         layout.addWidget(self.info_label, stretch=1)
         
-        # 放弃炉次按钮
-        self.btn_abandon = QPushButton("放弃炉次")
+        # 放弃炉次按钮（需要长按3秒，带进度条）
+        self.btn_abandon = ProgressButton("放弃炉次", parent=self)
         self.btn_abandon.setObjectName("btnAbandon")
         self.btn_abandon.setFixedSize(100, 36)
-        self.btn_abandon.clicked.connect(self.abandon_batch_clicked.emit)
+        self.btn_abandon.setVisible(False)  # 初始隐藏
+        self.btn_abandon.long_press_completed.connect(self.abandon_batch_clicked.emit)
         layout.addWidget(self.btn_abandon)
         
         # 开始记录按钮
@@ -177,8 +178,8 @@ class BarBatchInfo(QFrame):
         
         self.setStyleSheet(f"""
             QFrame#batchInfoBar {{
-                background: {colors.BG_LIGHT};
-                border: 1px solid {colors.BORDER_GLOW};
+                background: {colors.BG_DEEP};
+                border: 1px solid {colors.BORDER_DARK};
                 border-radius: 4px;
             }}
             
@@ -189,25 +190,27 @@ class BarBatchInfo(QFrame):
             }}
             
             QPushButton#btnStart {{
-                background: {colors.GLOW_PRIMARY}33;
-                color: {colors.GLOW_PRIMARY};
-                border: 1px solid {colors.GLOW_PRIMARY};
+                background: {colors.BG_DEEP};
+                color: {colors.TEXT_ACCENT};
+                border: 1px solid {colors.BORDER_DARK};
                 border-radius: 4px;
                 font-size: 13px;
                 font-weight: bold;
             }}
             
             QPushButton#btnStart:hover {{
-                background: {colors.GLOW_PRIMARY}4D;
-                border: 1px solid {colors.GLOW_PRIMARY};
+                background: {colors.TEXT_PRIMARY};
+                border: 1px solid {colors.TEXT_PRIMARY};
+                opacity: 0.9;
             }}
             
             QPushButton#btnStart:pressed {{
-                background: {colors.GLOW_PRIMARY}66;
+                background: {colors.TEXT_PRIMARY};
+                opacity: 0.8;
             }}
             
             QPushButton#btnAbandon, QPushButton#btnTerminate {{
-                background: {colors.BG_MEDIUM};
+                background: {colors.BG_DEEP};
                 color: {colors.TEXT_PRIMARY};
                 border: 1px solid {colors.BORDER_DARK};
                 border-radius: 4px;
@@ -216,16 +219,16 @@ class BarBatchInfo(QFrame):
             }}
             
             QPushButton#btnAbandon:hover, QPushButton#btnTerminate:hover {{
-                border: 1px solid {colors.BORDER_GLOW};
-                background: {colors.BG_LIGHT};
+                border: 1px solid {colors.TEXT_PRIMARY};
+                background: {colors.BG_DEEP};
             }}
             
             QPushButton#btnAbandon:pressed, QPushButton#btnTerminate:pressed {{
-                background: {colors.BG_DARK};
+                background: {colors.BG_CARD};
             }}
             
             QPushButton#btnAbandon:disabled {{
-                background: {colors.BG_DARK};
+                background: {colors.BG_CARD};
                 color: {colors.TEXT_DISABLED};
                 border: 1px solid {colors.BORDER_DARK};
             }}

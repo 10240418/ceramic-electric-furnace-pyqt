@@ -5,16 +5,27 @@ import sys
 import os
 from pathlib import Path
 
-# 设置项目根目录
-BASE_DIR = Path(__file__).resolve().parent
+# 设置项目根目录 (兼容打包模式和开发模式)
+if getattr(sys, 'frozen', False):
+    # PyInstaller 打包后: exe 所在目录
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    # 开发模式: main.py 所在目录
+    BASE_DIR = Path(__file__).resolve().parent
 
 # 确保当前目录在 sys.path 最前面
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+# 加载 .env 配置文件 (打包后 .env 在 exe 同级目录)
+from dotenv import load_dotenv
+env_path = BASE_DIR / ".env"
+if env_path.exists():
+    load_dotenv(env_path, override=True)
+
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPolygonF
+from PyQt6.QtCore import Qt, QPointF
 from loguru import logger
 
 # 导入前端配置
@@ -43,28 +54,54 @@ logger.add(
 )
 
 
-# 1. 创建系统托盘图标（蓝色圆点）
-def create_tray_icon():
-    pixmap = QPixmap(64, 64)
+# 1. 创建系统托盘图标（闪电+圆环，亮蓝色/红色）
+def create_tray_icon(error: bool = False):
+    color = QColor('#FF3333') if error else QColor('#00AAFF')
+    size = 64
+    pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
-    
+
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QColor(0, 123, 255))  # 蓝色
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.drawEllipse(8, 8, 48, 48)
+
+    # 圆环（粗线条）
+    pen = QPen(color, 5)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawEllipse(4, 4, 56, 56)
+
+    # 闪电（填充+粗边框）
+    bolt = QPolygonF([
+        QPointF(36, 6),
+        QPointF(20, 34),
+        QPointF(30, 34),
+        QPointF(26, 58),
+        QPointF(44, 26),
+        QPointF(34, 26),
+    ])
+    painter.setPen(QPen(color, 2))
+    painter.setBrush(color)
+    painter.drawPolygon(bolt)
+
     painter.end()
-    
     return QIcon(pixmap)
 
 
 # 2. 应用入口
 def main():
     logger.info("=" * 60)
-    logger.info(f"🚀 {APP_NAME} v{APP_VERSION} 启动")
+    logger.info(f"{APP_NAME} v{APP_VERSION} 启动")
     logger.info("=" * 60)
-    logger.info(f"📁 项目目录: {BASE_DIR}")
-    logger.info(f"📝 日志文件: {LOG_FILE}")
+    logger.info(f"项目目录: {BASE_DIR}")
+    logger.info(f".env 路径: {env_path} ({'已加载' if env_path.exists() else '不存在'})")
+    logger.info(f"日志文件: {LOG_FILE}")
+    
+    # 打印关键配置 (从 .env 读取)
+    from backend.config import get_settings
+    s = get_settings()
+    logger.info(f"PLC: {s.plc_ip}:{s.plc_port} | Mock: {s.mock_mode}")
+    logger.info(f"InfluxDB: {s.influx_url} | Bucket: {s.influx_bucket}")
+    logger.info(f"轮询间隔: DB1={s.db1_polling_interval}s, DB32={s.db32_polling_interval}s, 状态={s.status_polling_interval}s")
     logger.info("-" * 60)
     
     # 创建 Qt 应用

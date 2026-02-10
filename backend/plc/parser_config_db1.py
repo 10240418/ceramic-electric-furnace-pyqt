@@ -124,6 +124,14 @@ class ConfigDrivenDB1Parser:
                 bit = field_def.get('bit', 0)  # 获取位偏移，默认为0
                 return bool(data[offset] & (1 << bit))
             
+            elif field_type == 'TIME':
+                # TIME 类型 (32 位有符号整数, 4 bytes, 大端序)
+                # 存储单位: 毫秒 (ms)
+                # 范围: -2,147,483,648 ms 到 +2,147,483,647 ms
+                if offset + 4 > len(data):
+                    return 0
+                return struct.unpack('>i', data[offset:offset + 4])[0]
+            
             else:
                 # 未知类型，静默返回0，不打印警告
                 return 0
@@ -136,7 +144,7 @@ class ConfigDrivenDB1Parser:
         """解析 DB1 原始数据
         
         Args:
-            data: PLC DB1 原始字节数据 (182 bytes)
+            data: PLC DB1 原始字节数据 (190 bytes)
             
         Returns:
             解析后的数据字典
@@ -465,8 +473,13 @@ if __name__ == "__main__":
     print(f"   大小: {parser.db_config['total_size']} bytes")
     print(f"   字段数: {len(parser.fields)}")
     
-    # 生成模拟数据 (182 bytes)
-    mock_data = bytearray(182)
+    # 生成模拟数据 (190 bytes)
+    mock_data = bytearray(190)
+    
+    # 高压紧急停电数据 (offset 182-189)
+    struct.pack_into('>h', mock_data, 182, 8000)  # 弧流上限 8000A
+    mock_data[184] = 0x02  # bit 0=0 (未触发), bit 1=1 (已启用)
+    struct.pack_into('>i', mock_data, 186, 200)  # 消抖时间 200ms
     
     # 电机输出 (Int, offset 0-7)
     struct.pack_into('>h', mock_data, 0, 1000)   # 第一路电机

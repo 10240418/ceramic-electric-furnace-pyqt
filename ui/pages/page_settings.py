@@ -2,12 +2,12 @@
 系统配置页面 - 系统设置和配置管理
 """
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout, QSizePolicy,
     QPushButton, QFrame, QDoubleSpinBox, QCheckBox, QMessageBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QIcon
-from ui.styles.themes import ThemeManager, Theme
+from ui.styles.themes import ThemeManager, Theme, THEME_REGISTRY
 from ui.widgets.common.scroll_area_draggable import ScrollAreaDraggable
 from backend.alarm_thresholds import get_alarm_threshold_manager, ThresholdConfig
 from loguru import logger
@@ -24,6 +24,9 @@ class PageSettings(QWidget):
         
         # 存储所有输入控件的引用
         self.threshold_inputs = {}
+        
+        # 主题按钮引用
+        self.theme_buttons: dict[Theme, QPushButton] = {}
         
         # 当前选中的导航索引
         self.current_nav_index = 0
@@ -270,35 +273,76 @@ class PageSettings(QWidget):
         section_title.setFont(QFont("Microsoft YaHei", 16, QFont.Weight.Bold))
         layout.addWidget(section_title)
         
-        # 主题切换行
-        theme_row = QHBoxLayout()
-        theme_row.setSpacing(15)
-        
         # 主题标签
         theme_label = QLabel("主题模式:")
         theme_label.setObjectName("setting_label")
         theme_label.setFont(QFont("Microsoft YaHei", 13))
-        theme_row.addWidget(theme_label)
+        layout.addWidget(theme_label)
         
-        # 浅色主题按钮
-        self.btn_light_theme = QPushButton("浅色主题")
-        self.btn_light_theme.setObjectName("btn_light_theme")
-        self.btn_light_theme.setFixedSize(120, 40)
-        self.btn_light_theme.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_light_theme.clicked.connect(self.on_light_theme_clicked)
-        theme_row.addWidget(self.btn_light_theme)
+        # 主题按钮网格（深色/浅色分区）
+        cols = 5
+        dark_themes = [
+            Theme.DARK, Theme.OCEAN_BLUE, Theme.EMERALD_NIGHT, Theme.VIOLET_DREAM,
+            Theme.IRON_FORGE, Theme.CONTROL_ROOM, Theme.NIGHT_SHIFT, Theme.SLATE_GRID,
+        ]
+        light_themes = [
+            Theme.LIGHT, Theme.LIGHT_CHANGE, Theme.ROSE_GOLD, Theme.SUNSET_AMBER,
+            Theme.ARCTIC_FROST, Theme.STEEL_LINE, Theme.POLAR_FRAME,
+        ]
         
-        # 深色主题按钮
-        self.btn_dark_theme = QPushButton("深色主题")
-        self.btn_dark_theme.setObjectName("btn_dark_theme")
-        self.btn_dark_theme.setFixedSize(120, 40)
-        self.btn_dark_theme.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_dark_theme.clicked.connect(self.on_dark_theme_clicked)
-        theme_row.addWidget(self.btn_dark_theme)
+        dark_title = QLabel("深色主题")
+        dark_title.setObjectName("setting_label")
+        dark_title.setFont(QFont("Microsoft YaHei", 13, QFont.Weight.Bold))
+        layout.addWidget(dark_title)
         
-        theme_row.addStretch()
+        dark_grid = QGridLayout()
+        dark_grid.setSpacing(10)
+        for i, theme in enumerate(dark_themes):
+            entry = THEME_REGISTRY.get(theme.value, {})
+            label = entry.get('label', theme.value)
+            accent = entry.get('accent', '#888888')
+            
+            btn = QPushButton(label)
+            btn.setFixedHeight(40)
+            btn.setMinimumWidth(80)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            btn.setFont(QFont("Microsoft YaHei", 12))
+            btn.setProperty('accent', accent)
+            btn.clicked.connect(lambda checked, t=theme: self._on_theme_btn_clicked(t))
+            
+            row = i // cols
+            col = i % cols
+            dark_grid.addWidget(btn, row, col)
+            self.theme_buttons[theme] = btn
+        layout.addLayout(dark_grid)
         
-        layout.addLayout(theme_row)
+        light_title = QLabel("浅色主题")
+        light_title.setObjectName("setting_label")
+        light_title.setFont(QFont("Microsoft YaHei", 13, QFont.Weight.Bold))
+        layout.addWidget(light_title)
+        
+        light_grid = QGridLayout()
+        light_grid.setSpacing(10)
+        for i, theme in enumerate(light_themes):
+            entry = THEME_REGISTRY.get(theme.value, {})
+            label = entry.get('label', theme.value)
+            accent = entry.get('accent', '#888888')
+            
+            btn = QPushButton(label)
+            btn.setFixedHeight(40)
+            btn.setMinimumWidth(80)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            btn.setFont(QFont("Microsoft YaHei", 12))
+            btn.setProperty('accent', accent)
+            btn.clicked.connect(lambda checked, t=theme: self._on_theme_btn_clicked(t))
+            
+            row = i // cols
+            col = i % cols
+            light_grid.addWidget(btn, row, col)
+            self.theme_buttons[theme] = btn
+        layout.addLayout(light_grid)
         
         # 主题说明
         theme_desc = QLabel("选择您喜欢的主题模式，更改将立即生效")
@@ -308,15 +352,19 @@ class PageSettings(QWidget):
         
         return section
     
-    # 11. 浅色主题按钮点击
-    def on_light_theme_clicked(self):
-        self.theme_manager.set_theme(Theme.LIGHT)
-        logger.info("切换到浅色主题")
+    # 11. 主题按钮点击
+    def _on_theme_btn_clicked(self, theme: Theme):
+        self.theme_manager.set_theme(theme)
+        logger.info(f"切换到主题: {theme.value}")
     
-    # 12. 深色主题按钮点击
-    def on_dark_theme_clicked(self):
-        self.theme_manager.set_theme(Theme.DARK)
-        logger.info("切换到深色主题")
+    # 12. 判断强调色是否偏深
+    @staticmethod
+    def _is_dark_accent(hex_color: str) -> bool:
+        hex_color = hex_color.lstrip('#')
+        if len(hex_color) < 6:
+            return True
+        r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+        return (0.299 * r + 0.587 * g + 0.114 * b) < 160
     
     # 12.5. 创建弧流设置区域
     def create_arc_limit_section(self):
@@ -362,6 +410,7 @@ class PageSettings(QWidget):
         arc_limit = emergency_stop.get('emergency_stop_arc_limit', 8000)
         stop_flag = emergency_stop.get('emergency_stop_flag', False)
         stop_enabled = emergency_stop.get('emergency_stop_enabled', True)
+        delay_ms = emergency_stop.get('emergency_stop_delay', 0)
         
         # 弧流上限值显示卡片
         limit_card = QFrame()
@@ -393,7 +442,7 @@ class PageSettings(QWidget):
         value_layout.addStretch()
         
         # 设置按钮
-        set_btn = QPushButton("设置上限值")
+        set_btn = QPushButton("设置参数")
         set_btn.setObjectName("set_arc_limit_btn")
         set_btn.setFixedSize(140, 45)
         set_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -454,6 +503,24 @@ class PageSettings(QWidget):
         
         status_layout.addLayout(enabled_layout)
         
+        # 消抖时间
+        delay_layout = QHBoxLayout()
+        delay_layout.setSpacing(15)
+        
+        delay_label = QLabel("消抖时间:")
+        delay_label.setObjectName("status_label")
+        delay_label.setFont(QFont("Microsoft YaHei", 14))
+        delay_layout.addWidget(delay_label)
+        
+        self.delay_value = QLabel(f"{delay_ms} ms")
+        self.delay_value.setObjectName("delay_value")
+        self.delay_value.setFont(QFont("Roboto Mono", 14, QFont.Weight.Bold))
+        delay_layout.addWidget(self.delay_value)
+        
+        delay_layout.addStretch()
+        
+        status_layout.addLayout(delay_layout)
+        
         layout.addWidget(status_card)
         
         # 启动定时器，定期更新显示
@@ -497,12 +564,16 @@ class PageSettings(QWidget):
                 self.stop_enabled_value.setObjectName("stop_enabled_active" if stop_enabled else "stop_enabled_inactive")
                 self.stop_enabled_value.style().unpolish(self.stop_enabled_value)
                 self.stop_enabled_value.style().polish(self.stop_enabled_value)
+                
+                # 更新消抖时间
+                delay_ms = emergency_stop.get('emergency_stop_delay', 0)
+                self.delay_value.setText(f"{delay_ms} ms")
         except Exception as e:
             logger.error(f"更新弧流设置显示异常: {e}")
     
     # 12.7. 设置弧流上限按钮点击
     def on_set_arc_limit_clicked(self):
-        """打开设置弧流上限弹窗"""
+        """打开设置弧流上限和消抖时间弹窗"""
         from backend.bridge.data_cache import DataCache
         
         # 获取当前值
@@ -510,19 +581,21 @@ class PageSettings(QWidget):
         arc_data = data_cache.get_arc_data()  # 使用正确的方法
         
         current_limit = 8000
+        current_delay = 0
         if arc_data and 'emergency_stop' in arc_data:
             current_limit = arc_data['emergency_stop'].get('emergency_stop_arc_limit', 8000)
+            current_delay = arc_data['emergency_stop'].get('emergency_stop_delay', 0)
         
         # 打开弹窗
         from ui.widgets.settings.dialog_set_arc_limit import DialogSetArcLimit
-        dialog = DialogSetArcLimit(current_limit, self)
+        dialog = DialogSetArcLimit(current_limit, current_delay, self)
         dialog.limit_set.connect(self.on_arc_limit_set)
         dialog.exec()
     
-    # 12.8. 弧流上限设置完成
-    def on_arc_limit_set(self, new_limit: int):
-        """弧流上限设置完成回调"""
-        logger.info(f"弧流上限已设置为: {new_limit} A")
+    # 12.8. 弧流上限和消抖时间设置完成
+    def on_arc_limit_set(self, new_limit: int, new_delay: int):
+        """弧流上限和消抖时间设置完成回调"""
+        logger.info(f"设置完成 - 弧流上限: {new_limit} A, 消抖时间: {new_delay} ms")
     
     # 12.9. 显示蝶阀配置内容
     def show_valve_config_content(self):
@@ -801,6 +874,16 @@ class PageSettings(QWidget):
             ]
         )
         layout.addWidget(cooling_pressure_group)
+        
+        # 冷却水流速阈值
+        cooling_flow_group = self.create_threshold_group(
+            "冷却水流速 (m\u00b3/h)",
+            [
+                ("cooling_flow_shell", "炉皮流速"),
+                ("cooling_flow_cover", "炉盖流速"),
+            ]
+        )
+        layout.addWidget(cooling_flow_group)
         
         # 过滤器压差阈值
         filter_diff_group = self.create_threshold_group(
@@ -1609,6 +1692,11 @@ class PageSettings(QWidget):
                 background: transparent;
             }}
             
+            QLabel#delay_value {{
+                color: {tm.glow_primary()};
+                background: transparent;
+            }}
+            
             QPushButton#set_arc_limit_btn {{
                 background: {tm.border_glow()};
                 color: {tm.white()};
@@ -1647,71 +1735,38 @@ class PageSettings(QWidget):
             }}
         """)
         
-        # 更新主题按钮样式（使用次要背景色）
-        if current_theme == Theme.LIGHT:
-            # 浅色主题激活
-            self.btn_light_theme.setStyleSheet(f"""
-                QPushButton {{
-                    background: {tm.border_glow()};
-                    color: {tm.white()};
-                    border: 2px solid {tm.border_glow()};
-                    border-radius: 6px;
-                    font-size: 13px;
-                    font-weight: bold;
-                }}
-                
-                QPushButton:hover {{
-                    background: {tm.glow_primary()};
-                    border: 2px solid {tm.glow_primary()};
-                }}
-            """)
+        # 更新主题按钮样式
+        current_theme = self.theme_manager.get_current_theme()
+        for theme, btn in self.theme_buttons.items():
+            accent = btn.property('accent')
+            is_dark = self._is_dark_accent(accent)
+            text_color = '#ffffff' if is_dark else '#000000'
             
-            self.btn_dark_theme.setStyleSheet(f"""
-                QPushButton {{
-                    background: {tm.bg_dark()};
-                    color: {tm.text_primary()};
-                    border: 1px solid {tm.border_medium()};
-                    border-radius: 6px;
-                    font-size: 13px;
-                    font-weight: normal;
-                }}
-                
-                QPushButton:hover {{
-                    background: {tm.bg_medium()};
-                    border: 1px solid {tm.border_glow()};
-                }}
-            """)
-        else:
-            # 深色主题激活
-            self.btn_dark_theme.setStyleSheet(f"""
-                QPushButton {{
-                    background: {tm.border_glow()};
-                    color: {tm.white()};
-                    border: 2px solid {tm.border_glow()};
-                    border-radius: 6px;
-                    font-size: 13px;
-                    font-weight: bold;
-                }}
-                
-                QPushButton:hover {{
-                    background: {tm.glow_primary()};
-                    border: 2px solid {tm.glow_primary()};
-                }}
-            """)
-            
-            self.btn_light_theme.setStyleSheet(f"""
-                QPushButton {{
-                    background: {tm.bg_dark()};
-                    color: {tm.text_primary()};
-                    border: 1px solid {tm.border_medium()};
-                    border-radius: 6px;
-                    font-size: 13px;
-                    font-weight: normal;
-                }}
-                
-                QPushButton:hover {{
-                    background: {tm.bg_medium()};
-                    border: 1px solid {tm.border_glow()};
-                }}
-            """)
+            if theme == current_theme:
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background: {accent};
+                        color: {text_color};
+                        border: 2px solid {accent};
+                        border-radius: 6px;
+                        font-size: 13px;
+                        font-weight: bold;
+                    }}
+                """)
+            else:
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background: {tm.bg_dark()};
+                        color: {tm.text_primary()};
+                        border: 1px solid {tm.border_medium()};
+                        border-radius: 6px;
+                        font-size: 13px;
+                        font-weight: normal;
+                    }}
+                    QPushButton:hover {{
+                        background: {accent};
+                        color: {text_color};
+                        border: 1px solid {accent};
+                    }}
+                """)
 

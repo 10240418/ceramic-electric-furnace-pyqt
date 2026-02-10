@@ -30,12 +30,20 @@ class TableFeedingRecord(QFrame):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        # 标题
+        # 标题栏（和投料累计图表一样的样式）
+        title_widget = QWidget()
+        title_widget.setObjectName("titleBar")
+        title_widget.setFixedHeight(36)
+        title_layout = QHBoxLayout(title_widget)
+        title_layout.setContentsMargins(12, 0, 12, 0)
+        title_layout.setSpacing(0)
+        
         title_label = QLabel("投料记录")
-        title_label.setObjectName("tableTitle")
-        title_label.setFixedHeight(36)
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        main_layout.addWidget(title_label)
+        title_label.setObjectName("titleLabel")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        title_layout.addWidget(title_label)
+        
+        main_layout.addWidget(title_widget)
         
         # 滚动区域
         self.scroll_area = QScrollArea()
@@ -50,8 +58,8 @@ class TableFeedingRecord(QFrame):
         self.records_container.setObjectName("recordsContainer")
         self.records_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.records_layout = QVBoxLayout(self.records_container)
-        self.records_layout.setContentsMargins(8, 8, 8, 8)
-        self.records_layout.setSpacing(6)
+        self.records_layout.setContentsMargins(12, 2, 12, 2)
+        self.records_layout.setSpacing(0)
         self.records_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         self.scroll_area.setWidget(self.records_container)
@@ -74,23 +82,39 @@ class TableFeedingRecord(QFrame):
     # 3. 添加记录
     def add_record(self, timestamp: datetime, weight: float):
         """
-        添加投料记录
+        添加单条投料记录（实时新增，插入到最前面）
         
         Args:
             timestamp: 投料时间
             weight: 投料重量（kg）
         """
-        record_item = self.create_record_item(timestamp, weight)
+        # 如果已有记录，先插入分割线
+        has_existing = self.records_layout.count() > 0
         
-        # 插入到最前面（最新的在上面）
+        record_item = self.create_record_item(timestamp, weight)
         self.records_layout.insertWidget(0, record_item)
+        
+        if has_existing:
+            divider_container = QWidget()
+            divider_layout = QHBoxLayout(divider_container)
+            divider_layout.setContentsMargins(0, 0, 0, 0)
+            divider_layout.setSpacing(0)
+            divider = QFrame()
+            divider.setFrameShape(QFrame.Shape.HLine)
+            divider.setObjectName("dataDivider")
+            divider.setFixedHeight(1)
+            divider_layout.addWidget(divider)
+            self.records_layout.insertWidget(1, divider_container)
+        else:
+            # 第一条记录，底部也加分割线
+            self._append_bottom_divider()
         
         self.records.append({
             'timestamp': timestamp,
             'weight': weight
         })
     
-    # 4. 创建记录项（左右布局：左边时间，右边重量）
+    # 4. 创建记录项（参考 CardHopper 的紧凑水平布局）
     def create_record_item(self, timestamp: datetime, weight: float) -> QFrame:
         """创建单条记录项"""
         item = QFrame()
@@ -99,10 +123,10 @@ class TableFeedingRecord(QFrame):
         item.setFixedHeight(42)
         
         layout = QHBoxLayout(item)
-        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setContentsMargins(0, 2, 0, 2)
         layout.setSpacing(12)
         
-        # 左侧：时间（上下布局：日期 + 时间）
+        # 左侧：日期 + 时间（上下堆叠）
         time_container = QVBoxLayout()
         time_container.setContentsMargins(0, 0, 0, 0)
         time_container.setSpacing(0)
@@ -121,7 +145,7 @@ class TableFeedingRecord(QFrame):
         
         layout.addLayout(time_container, stretch=3)
         
-        # 右侧：重量（数值 + 单位）
+        # 右侧：重量 + 单位
         weight_layout = QHBoxLayout()
         weight_layout.setContentsMargins(0, 0, 0, 0)
         weight_layout.setSpacing(4)
@@ -140,6 +164,20 @@ class TableFeedingRecord(QFrame):
         layout.addLayout(weight_layout, stretch=2)
         
         return item
+    
+    # 4.5 添加底部分割线
+    def _append_bottom_divider(self):
+        divider_container = QWidget()
+        divider_container.setObjectName("bottomDivider")
+        divider_layout = QHBoxLayout(divider_container)
+        divider_layout.setContentsMargins(0, 0, 0, 0)
+        divider_layout.setSpacing(0)
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setObjectName("dataDivider")
+        divider.setFixedHeight(1)
+        divider_layout.addWidget(divider)
+        self.records_layout.addWidget(divider_container)
     
     # 5. 清空记录
     def clear_records(self):
@@ -162,9 +200,30 @@ class TableFeedingRecord(QFrame):
         logger.info(f"TableFeedingRecord.set_records: 收到 {len(records)} 条记录")
         self.clear_records()
         
-        # 反转记录列表，让最新的记录显示在最上面
-        for record in reversed(records):
-            self.add_record(record['timestamp'], record['weight'])
+        # 按时间降序排列（最新的在上面）
+        sorted_records = sorted(records, key=lambda r: r['timestamp'], reverse=True)
+        
+        for i, record in enumerate(sorted_records):
+            # 记录之间添加分割线
+            if i > 0:
+                divider_container = QWidget()
+                divider_layout = QHBoxLayout(divider_container)
+                divider_layout.setContentsMargins(0, 0, 0, 0)
+                divider_layout.setSpacing(0)
+                divider = QFrame()
+                divider.setFrameShape(QFrame.Shape.HLine)
+                divider.setObjectName("dataDivider")
+                divider.setFixedHeight(1)
+                divider_layout.addWidget(divider)
+                self.records_layout.addWidget(divider_container)
+            
+            record_item = self.create_record_item(record['timestamp'], record['weight'])
+            self.records_layout.addWidget(record_item)
+            self.records.append(record)
+        
+        # 最后一条记录下方也添加分割线
+        if sorted_records:
+            self._append_bottom_divider()
         
         logger.info(f"TableFeedingRecord: 添加完成，当前 records_layout.count()={self.records_layout.count()}")
     
@@ -179,14 +238,19 @@ class TableFeedingRecord(QFrame):
                 border-radius: 6px;
             }}
             
-            QLabel#tableTitle {{
+            QWidget#titleBar {{
                 background: {colors.BG_LIGHT};
+                border: none;
+                border-bottom: 1px solid {colors.BORDER_DARK};
+                border-radius: 6px 6px 0 0;
+            }}
+            
+            QLabel#titleLabel {{
                 color: {colors.TEXT_PRIMARY};
                 font-size: 14px;
                 font-weight: bold;
                 border: none;
-                border-bottom: 1px solid {colors.BORDER_DARK};
-                border-radius: 6px 6px 0 0;
+                background: transparent;
             }}
             
             QScrollArea#scrollArea {{
@@ -202,16 +266,18 @@ class TableFeedingRecord(QFrame):
             QFrame#recordItem {{
                 background: transparent;
                 border: none;
-                border-bottom: 1px solid {colors.DIVIDER};
-                padding-right: 4px;
             }}
-            QFrame#recordItem:last-child {{
-                border-bottom: none;
+            
+            QFrame#dataDivider {{
+                background: {colors.BORDER_DARK};
+                border: none;
+                max-height: 1px;
+                min-height: 1px;
             }}
             
             QLabel#recordDate {{
-                color: {colors.TEXT_SECONDARY};
-                font-size: 14px;
+                color: {colors.TEXT_PRIMARY};
+                font-size: 16px;
                 font-weight: 600;
                 border: none;
                 background: transparent;
@@ -219,8 +285,8 @@ class TableFeedingRecord(QFrame):
             }}
             
             QLabel#recordTime {{
-                color: {colors.TEXT_SECONDARY};
-                font-size: 14px;
+                color: {colors.TEXT_PRIMARY};
+                font-size: 16px;
                 font-weight: 600;
                 border: none;
                 background: transparent;
@@ -228,8 +294,8 @@ class TableFeedingRecord(QFrame):
             }}
             
             QLabel#recordWeightValue {{
-                color: {colors.TEXT_PRIMARY};
-                font-size: 20px;
+                color: {colors.TEXT_ACCENT};
+                font-size: 26px;
                 font-weight: bold;
                 font-family: "Roboto Mono";
                 border: none;
@@ -238,8 +304,7 @@ class TableFeedingRecord(QFrame):
             
             QLabel#recordUnit {{
                 color: {colors.TEXT_PRIMARY};
-                font-size: 18px;
-                font-weight: bold;
+                font-size: 16px;
                 border: none;
                 background: transparent;
             }}
@@ -270,4 +335,6 @@ class TableFeedingRecord(QFrame):
     # 8. 主题变化时重新应用样式
     def on_theme_changed(self):
         self.apply_styles()
+    
+
 

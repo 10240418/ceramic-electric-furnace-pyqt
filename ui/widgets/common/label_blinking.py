@@ -156,14 +156,14 @@ class LabelBlinkingFade(QLabel):
     # 5. 更新透明度
     def update_opacity(self):
         if self._fade_in:
-            self._opacity += 0.1
+            self._opacity += 0.08  # 稍微加快淡入速度
             if self._opacity >= 1.0:
                 self._opacity = 1.0
                 self._fade_in = False
         else:
-            self._opacity -= 0.1
-            if self._opacity <= 0.3:
-                self._opacity = 0.3
+            self._opacity -= 0.08  # 稍微加快淡出速度
+            if self._opacity <= 0.2:  # 淡到 20% 透明度
+                self._opacity = 0.2
                 self._fade_in = True
         
         self.update_style()

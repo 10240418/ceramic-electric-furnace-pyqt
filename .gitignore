@@ -173,3 +173,4 @@ vdoc/*_temp.md
 # assets/images/*.png
 # assets/icons/*.svg
 
+portable_package/python/python312.zip

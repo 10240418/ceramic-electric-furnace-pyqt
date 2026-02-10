@@ -90,7 +90,7 @@ class DialogConfirm(QDialog):
         self.setStyleSheet(f"""
             QDialog {{
                 background: {colors.BG_DARK};
-                border: 2px solid {colors.BORDER_GLOW};
+                border: 2px solid {colors.BORDER_DARK};
                 border-radius: 8px;
             }}
             
@@ -130,7 +130,7 @@ class DialogConfirm(QDialog):
             QPushButton#confirmBtn {{
                 background: {colors.BUTTON_PRIMARY_BG};
                 color: {colors.BUTTON_PRIMARY_TEXT};
-                border: 1px solid {colors.BORDER_GLOW};
+                border: 1px solid {colors.BORDER_DARK};
                 border-radius: 4px;
                 padding: 8px 20px;
                 font-size: 14px;

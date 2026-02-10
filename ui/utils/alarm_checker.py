@@ -52,12 +52,10 @@ class AlarmChecker:
         Returns:
             'normal': 正常（绿色/白色）
             'warning': 警告（黄色）
-            'alarm': 报警（红色+闪烁）- 只有在记录时才返回 alarm
-        """
-        # 如果没有开始记录，直接返回 normal（不报警）
-        if not self.is_recording():
-            return 'normal'
+            'alarm': 报警（红色+闪烁）
         
+        注意：始终返回真实的报警状态，由各个卡片组件自己决定是否播放声音和闪烁
+        """
         return self.alarm_manager.check_value(param_name, value)
     
     # 2. 获取阈值配置

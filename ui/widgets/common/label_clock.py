@@ -63,17 +63,18 @@ class LabelClock(QWidget):
     # 4. 应用样式
     def apply_styles(self):
         tm = self.theme_manager
+        colors = tm.get_colors()
         
         self.setStyleSheet(f"""
             QLabel#clock_date {{
-                color: {tm.border_glow()};
+                color: {colors.TEXT_PRIMARY};
                 background: transparent;
                 border: none;
                 padding: 4px 2px;
             }}
             
             QLabel#clock_time {{
-                color: {tm.border_glow()};
+                color: {colors.TEXT_PRIMARY};
                 background: transparent;
                 border: none;
                 padding: 4px 2px;

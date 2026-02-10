@@ -14,10 +14,14 @@ class CardPowerEnergy(QFrame):
         super().__init__(parent)
         self.theme_manager = ThemeManager.instance()
         self.setObjectName("powerEnergyCard")
-        self.setFixedSize(180, 112)
+        self.setFixedSize(200, 112)
         
         # 确保背景完全不透明
         self.setAutoFillBackground(True)
+        
+        # 保存当前数值
+        self._power_kw = 0.0
+        self._energy_kwh = 0.0
         
         self.init_ui()
         self.apply_styles()
@@ -40,39 +44,51 @@ class CardPowerEnergy(QFrame):
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.title_label)
         
-        # 总功率（左对齐）
-        self.power_label = QLabel("总功率: 0.0kW")
+        # 总功率（左对齐，支持 HTML）
+        self.power_label = QLabel()
         self.power_label.setObjectName("power_label")
         self.power_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.power_label.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(self.power_label)
         
-        # 总能耗（左对齐）
-        self.energy_label = QLabel("总能耗: 0.0kWh")
+        # 总能耗（左对齐，支持 HTML）
+        self.energy_label = QLabel()
         self.energy_label.setObjectName("energy_label")
         self.energy_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.energy_label.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(self.energy_label)
     
-    # 3. 更新数据
-    def update_data(self, power_kw: float, energy_kwh: float):
-        """
-        更新功率能耗数据
-        
-        Args:
-            power_kw: 总功率（千瓦）
-            energy_kwh: 总能耗（千瓦时）
-        """
-        # 标签和数值统一使用 26px
-        self.power_label.setText(f'总功率: {power_kw:.1f}kW')
-        self.energy_label.setText(f'总能耗: {energy_kwh:.1f}kWh')
+    # 3. 刷新 HTML 文本（使用当前主题颜色）
+    def _refresh_html_text(self):
+        colors = self.theme_manager.get_colors()
+        self.power_label.setText(
+            f'<span style="color: {colors.TEXT_PRIMARY}; font-size: 16px; font-weight: bold;">功率: </span>'
+            f'<span style="color: {colors.TEXT_ACCENT}; font-size: 16px; font-weight: bold;">{self._power_kw:.1f}kW</span>'
+        )
+        self.energy_label.setText(
+            f'<span style="color: {colors.TEXT_PRIMARY}; font-size: 16px; font-weight: bold;">能耗: </span>'
+            f'<span style="color: {colors.TEXT_ACCENT}; font-size: 16px; font-weight: bold;">{self._energy_kwh:.1f}kWh</span>'
+        )
     
-    # 4. 应用样式
+    # 4. 更新数据
+    def update_data(self, power_kw: float, energy_kwh: float):
+        self._power_kw = power_kw
+        self._energy_kwh = energy_kwh
+        self._refresh_html_text()
+    
+    # 5. 应用样式
     def apply_styles(self):
         colors = self.theme_manager.get_colors()
         
+        # 将背景色转换为 RGBA 格式，设置 100% 不透明度
+        from PyQt6.QtGui import QColor
+        qcolor_bg = QColor(colors.BG_DEEP)
+        bg_color_rgba = f"rgba({qcolor_bg.red()}, {qcolor_bg.green()}, {qcolor_bg.blue()}, 1.0)"
+        
         self.setStyleSheet(f"""
             QFrame#powerEnergyCard {{
-                background: {colors.BG_LIGHT};
-                border: 1px solid {colors.BORDER_GLOW};
+                background: {bg_color_rgba};
+                border: 1px solid {colors.BORDER_DARK};
                 border-radius: 8px;
             }}
             
@@ -81,21 +97,21 @@ class CardPowerEnergy(QFrame):
                 font-size: 18px;
                 font-weight: bold;
             }}
-            
-            QLabel#power_label {{
-                color: {colors.GLOW_PRIMARY};
-                font-size: 18px;
-                font-weight: bold;
-            }}
-            
-            QLabel#energy_label {{
-                color: {colors.GLOW_PRIMARY};
-                font-size: 18px;
-                font-weight: bold;
-            }}
         """)
+        
+        # 添加阴影效果（颜色为BORDER_DARK）
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(4)
+        shadow.setXOffset(2)
+        shadow.setYOffset(2)
+        shadow.setColor(QColor(colors.BORDER_DARK))
+        self.setGraphicsEffect(shadow)
+        
+        # 刷新 HTML 文本颜色
+        self._refresh_html_text()
     
-    # 5. 主题变化时重新应用样式
+    # 6. 主题变化时重新应用样式
     def on_theme_changed(self):
         self.apply_styles()
 

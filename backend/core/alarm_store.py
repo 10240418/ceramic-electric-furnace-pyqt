@@ -10,7 +10,7 @@ from backend.config import get_settings
 settings = get_settings()
 
 _last_alarms: Dict[str, datetime] = {}
-_ALARM_DEDUP_SECONDS = 300
+_ALARM_DEDUP_SECONDS = 60
 
 
 def log_alarm(
@@ -20,10 +20,11 @@ def log_alarm(
     value: float,
     threshold: float,
     level: str,
-    message: str = ""
+    message: str = "",
+    batch_code: str = ""
 ) -> bool:
     """记录报警日志到InfluxDB"""
-    dedup_key = f"{device_id}_{alarm_type}_{level}"
+    dedup_key = f"{device_id}_{param_name}_{level}"
     now = datetime.now(timezone.utc)
     
     if dedup_key in _last_alarms:
@@ -37,6 +38,10 @@ def log_alarm(
         "level": level,
     }
     
+    # 添加批次号 tag
+    if batch_code:
+        tags["batch_code"] = batch_code
+    
     fields = {
         "param_name": param_name,
         "value": float(value),
@@ -49,7 +54,7 @@ def log_alarm(
     
     if success:
         _last_alarms[dedup_key] = now
-        print(f"🚨 报警记录: {device_id} {alarm_type} {level} - {param_name}={value:.2f}")
+        print(f"[ALARM] 报警记录: {device_id} {alarm_type} {level} - {param_name}={value:.2f}")
     
     return success
 

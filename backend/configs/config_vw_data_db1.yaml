@@ -15,7 +15,7 @@ system:
 # ============================================================
 # DB1 - Vw_Data 数据块定义
 # PLC: CPU 1214C AC/DC/Rly
-# 总大小: 182 bytes (offset 0~181)
+# 总大小: 190 bytes (offset 0~189)
 # ============================================================
 # 数据结构概述 (根据实际PLC配置):
 #   - offset 0-7: 电机输出 (4个 Int)
@@ -27,12 +27,13 @@ system:
 #   - offset 68-93: 其他 Vw 系列变量
 #   - offset 94-147: 弧流弧压内部数据 (归一化Real + 比例Int, 前端不使用)
 #   - offset 148-181: 变频电机电流 / 电机输出归一 / 总电流总功率
+#   - offset 182-189: ⭐⭐ 高压紧急停电弧流设置 (前端设置页面使用, 4个数据)
 # ============================================================
 
 db1_vw_data:
   db_block: 1
   name: "Vw_Data"
-  total_size: 182  # offset 0 ~ 181
+  total_size: 190  # offset 0 ~ 189 (包含高压紧急停电数据)
   
   # 字段定义列表 (按偏移量顺序)
   fields:
@@ -517,13 +518,14 @@ db1_vw_data:
       description: 第三路电机输出归一化值
 
     # ============================================================
-    # 高压紧急停电弧流设置 (offset 182-186)
+    # 高压紧急停电弧流设置 (offset 182-189, 共8字节)
     # ============================================================
     - name: emergency_stop_arc_limit
       offset: 182
       type: INT
       unit: "A"
       description: 高压紧急停电弧流上限值
+      writable: true
 
     - name: emergency_stop_flag
       offset: 184
@@ -531,6 +533,7 @@ db1_vw_data:
       type: BOOL
       unit: ""
       description: 高压紧急停电标志
+      writable: false
 
     - name: emergency_stop_enabled
       offset: 184
@@ -538,6 +541,14 @@ db1_vw_data:
       type: BOOL
       unit: ""
       description: 高压紧急停电功能使能
+      writable: false
+
+    - name: emergency_stop_delay
+      offset: 186
+      type: TIME
+      unit: "ms"
+      description: 高压紧急停电消抖时间 (PLC存储为毫秒, 32位有符号整数)
+      writable: true
 
 # ============================================================
 # 数据分组 (便于前端显示和API使用)

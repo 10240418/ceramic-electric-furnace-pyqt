@@ -48,72 +48,19 @@ class CardHopper(QFrame):
     
     # 2. 初始化 UI
     def init_ui(self):
-        main_layout = QVBoxLayout(self)
+        main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        # 顶部标题栏（投料状态）
-        self.create_title_bar()
-        main_layout.addWidget(self.title_bar)
-        
-        # 标题栏下方的分割线
-        title_divider_container = QWidget()
-        title_divider_container.setObjectName("titleDividerContainer")
-        title_divider_layout = QHBoxLayout(title_divider_container)
-        title_divider_layout.setContentsMargins(0, 0, 12, 0)
-        title_divider_layout.setSpacing(0)
-        
-        title_divider = QFrame()
-        title_divider.setFrameShape(QFrame.Shape.HLine)
-        title_divider.setObjectName("titleDivider")
-        title_divider.setFixedHeight(1)
-        title_divider_layout.addWidget(title_divider)
-        
-        main_layout.addWidget(title_divider_container)
-        
-        # 下方内容区域（左右分栏）
-        content_widget = QWidget()
-        content_widget.setObjectName("contentArea")
-        content_layout = QHBoxLayout(content_widget)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(0)
-        
         # 左侧 60%：投料记录表
         self.create_left_panel()
-        content_layout.addWidget(self.left_panel, stretch=60)
+        main_layout.addWidget(self.left_panel, stretch=60)
         
-        # 右侧 40%：数据面板
+        # 右侧 40%：数据面板（包含投料状态、投料累计、料仓重量、上次投料量）
         self.create_right_panel()
-        content_layout.addWidget(self.right_panel, stretch=40)
-        
-        main_layout.addWidget(content_widget)
+        main_layout.addWidget(self.right_panel, stretch=40)
     
-    # 3. 创建顶部标题栏（投料状态）
-    def create_title_bar(self):
-        self.title_bar = QWidget()
-        self.title_bar.setObjectName("titleBar")
-        self.title_bar.setFixedHeight(52)
-        
-        title_layout = QHBoxLayout(self.title_bar)
-        title_layout.setContentsMargins(12, 2, 12, 2)
-        title_layout.setSpacing(8)
-        
-        # 左侧弹簧，让内容右对齐
-        title_layout.addStretch()
-        
-        # 投料状态标签
-        status_label = QLabel("投料状态:")
-        status_label.setObjectName("statusLabel")
-        status_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        title_layout.addWidget(status_label)
-        
-        # 状态值
-        self.status_value_label = QLabel("静止")
-        self.status_value_label.setObjectName("statusValue")
-        self.status_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        title_layout.addWidget(self.status_value_label)
-    
-    # 4. 创建左侧面板（投料记录表）
+    # 3. 创建左侧面板（投料记录表）
     def create_left_panel(self):
         self.left_panel = QFrame()
         self.left_panel.setObjectName("leftPanel")
@@ -148,14 +95,21 @@ class CardHopper(QFrame):
         
         layout.addWidget(self.scroll_area, stretch=1)
     
-    # 5. 创建右侧面板（数据面板）
+    # 4. 创建右侧面板（数据面板）
     def create_right_panel(self):
         self.right_panel = QFrame()
         self.right_panel.setObjectName("rightPanel")
         
         layout = QVBoxLayout(self.right_panel)
-        layout.setContentsMargins(12, 2, 12, 2)
+        layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(0)
+        
+        # 投料状态数据块
+        self.status_block = self.create_status_block()
+        layout.addWidget(self.status_block)
+        
+        # 分割线
+        self.add_divider(layout)
         
         # 投料累计数据块
         self.feeding_total_block = self.create_data_block("投料累计:", "0", "kg")
@@ -175,11 +129,39 @@ class CardHopper(QFrame):
         self.last_feeding_block = self.create_data_block("上次投料量:", "0", "kg")
         layout.addWidget(self.last_feeding_block)
         
-        # 分割线
+        # 最后一条分割线
         self.add_divider(layout)
         
         # 添加弹簧，让数据从顶部开始排列
         layout.addStretch()
+    
+    # 5. 创建投料状态数据块
+    def create_status_block(self) -> QWidget:
+        """创建投料状态数据块（只显示状态值，无标签）"""
+        block = QWidget()
+        block.setObjectName("dataBlock")
+        
+        layout = QVBoxLayout(block)
+        layout.setContentsMargins(0, 8, 0, 8)
+        layout.setSpacing(0)
+        
+        # 状态值（左对齐）
+        status_row = QWidget()
+        status_layout = QHBoxLayout(status_row)
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(0)
+        
+        # 状态值（使用和炉皮冷却水标题一样的字体）
+        self.status_value_label = QLabel("静止")
+        self.status_value_label.setObjectName("statusValue")
+        self.status_value_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        
+        status_layout.addWidget(self.status_value_label)
+        status_layout.addStretch()
+        
+        layout.addWidget(status_row)
+        
+        return block
     
     # 6. 添加分割线
     def add_divider(self, layout):
@@ -207,24 +189,22 @@ class CardHopper(QFrame):
         layout.setContentsMargins(0, 4, 0, 4)
         layout.setSpacing(4)
         
-        # 第 1 行：标签（右对齐）
+        # 第 1 行：标签（左对齐）
         label_widget = QLabel(label)
         label_widget.setObjectName("blockLabel")
-        label_widget.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        label_widget.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(label_widget)
         
-        # 第 2 行：数值 + 单位（同一行，右对齐）
+        # 第 2 行：数值 + 单位（同一行，左对齐）
         value_row = QWidget()
         value_layout = QHBoxLayout(value_row)
         value_layout.setContentsMargins(0, 0, 0, 0)
         value_layout.setSpacing(6)
         
-        value_layout.addStretch()
-        
         # 数值（使用 QFont 设置字体）
         value_label = QLabel(value)
         value_label.setObjectName("blockValue")
-        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
         # 设置字体：Roboto Mono, 26px, 加粗
         font = QFont("Roboto Mono", 26)
@@ -235,8 +215,10 @@ class CardHopper(QFrame):
         
         unit_label = QLabel(unit)
         unit_label.setObjectName("blockUnit")
-        unit_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        unit_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         value_layout.addWidget(unit_label)
+        
+        value_layout.addStretch()
         
         layout.addWidget(value_row)
         
@@ -287,7 +269,7 @@ class CardHopper(QFrame):
         state_text_map = {
             'idle': '静止',
             'feeding': '上料中',
-            'waiting_feed': '排队等待上料',
+            'waiting_feed': '待上料',
             'discharging': '排料中'
         }
         self.status_value_label.setText(state_text_map.get(state, '静止'))
@@ -296,19 +278,17 @@ class CardHopper(QFrame):
         colors = self.theme_manager.get_colors()
         state_color_map = {
             'idle': colors.TEXT_PRIMARY,
-            'feeding': colors.GLOW_PRIMARY,
-            'waiting_feed': colors.GLOW_ORANGE,
-            'discharging': colors.GLOW_GREEN
+            'feeding': colors.TEXT_ACCENT,
+            'waiting_feed': colors.COLOR_WARNING,
+            'discharging': colors.COLOR_SUCCESS
         }
-        self.status_value_label.setStyleSheet(f"""
-            QLabel#statusValue {{
-                color: {state_color_map.get(state, colors.TEXT_PRIMARY)};
-                font-size: 22px;
-                font-weight: bold;
-                border: none;
-                background: transparent;
-            }}
-        """)
+        color = state_color_map.get(state, colors.TEXT_PRIMARY)
+        
+        # 更新状态值颜色
+        from PyQt6.QtGui import QPalette, QColor
+        palette = self.status_value_label.palette()
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(color))
+        self.status_value_label.setPalette(palette)
         
         # 更新投料累计
         if feeding_total > 0.0:
@@ -516,54 +496,15 @@ class CardHopper(QFrame):
         
         self.setStyleSheet(f"""
             QFrame#hopperCard {{
-                background: {colors.BG_LIGHT};
-                border: 1px solid {colors.BORDER_GLOW};
+                background: {colors.BG_CARD};
+                border: 1px solid {colors.BORDER_DARK};
                 border-radius: 6px;
-            }}
-            
-            QWidget#titleBar {{
-                background: transparent;
-                border: none;
-                border-radius: 0px;
-            }}
-            
-            QWidget#titleDividerContainer {{
-                background: transparent;
-                border: none;
-            }}
-            
-            QFrame#titleDivider {{
-                background: {colors.BORDER_ACCENT};
-                border: none;
-                max-height: 1px;
-                min-height: 1px;
-            }}
-            
-            QLabel#statusLabel {{
-                color: {colors.TEXT_PRIMARY};
-                font-size: 22px;
-                font-weight: bold;
-                border: none;
-                background: transparent;
-            }}
-            
-            QLabel#statusValue {{
-                color: {colors.TEXT_PRIMARY};
-                font-size: 22px;
-                font-weight: bold;
-                border: none;
-                background: transparent;
-            }}
-            
-            QWidget#contentArea {{
-                background: transparent;
-                border: none;
             }}
             
             QFrame#leftPanel {{
                 background: transparent;
                 border: none;
-                border-right: 1px solid {colors.BORDER_ACCENT};
+                border-right: 1px solid {colors.BORDER_DARK};
             }}
             
             QFrame#rightPanel {{
@@ -577,10 +518,18 @@ class CardHopper(QFrame):
             }}
             
             QFrame#dataDivider {{
-                background: {colors.BORDER_ACCENT};
+                background: {colors.BORDER_DARK};
                 border: none;
                 max-height: 1px;
                 min-height: 1px;
+            }}
+            
+            QLabel#statusValue {{
+                color: {colors.TEXT_PRIMARY};
+                font-size: 22px;
+                font-weight: bold;
+                border: none;
+                background: transparent;
             }}
             
             QLabel#blockLabel {{
@@ -591,7 +540,7 @@ class CardHopper(QFrame):
             }}
             
             QLabel#blockValue {{
-                color: {colors.GLOW_PRIMARY};
+                color: {colors.TEXT_ACCENT};
                 font-weight: bold;
                 font-family: "Roboto Mono";
                 border: none;
@@ -618,7 +567,7 @@ class CardHopper(QFrame):
             QFrame#recordItem {{
                 background: transparent;
                 border: none;
-                border-bottom: 1px solid {colors.DIVIDER};
+                border-bottom: 1px solid {colors.BORDER_DARK};
                 padding-right: 4px;
             }}
             QFrame#recordItem:last-child {{
@@ -644,7 +593,7 @@ class CardHopper(QFrame):
             }}
             
             QLabel#recordWeightValue {{
-                color: {colors.TEXT_PRIMARY};
+                color: {colors.TEXT_ACCENT};
                 font-size: 20px;
                 font-weight: bold;
                 font-family: "Roboto Mono";
@@ -682,6 +631,16 @@ class CardHopper(QFrame):
                 background: none;
             }}
         """)
+        
+        # 添加阴影效果
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        from PyQt6.QtGui import QColor
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(4)
+        shadow.setXOffset(2)
+        shadow.setYOffset(2)
+        shadow.setColor(QColor(colors.BORDER_DARK))
+        self.setGraphicsEffect(shadow)
     
     # 17. 主题变化时重新应用样式
     def on_theme_changed(self):
@@ -693,13 +652,11 @@ class CardHopper(QFrame):
     def _refresh_record_colors(self):
         """强制刷新所有投料记录的日期和时间颜色"""
         colors = self.theme_manager.get_colors()
-        
-        # 查找所有记录项中的日期和时间标签
         for record_item in self.records_container.findChildren(QFrame):
             if record_item.objectName() == "recordItem":
                 for label in record_item.findChildren(QLabel):
                     obj_name = label.objectName()
-                    if obj_name == "recordDate" or obj_name == "recordTime":
+                    if obj_name in ("recordDate", "recordTime"):
                         label.setStyleSheet(f"""
                             QLabel {{
                                 color: {colors.TEXT_PRIMARY};
@@ -713,7 +670,7 @@ class CardHopper(QFrame):
                     elif obj_name == "recordWeightValue":
                         label.setStyleSheet(f"""
                             QLabel {{
-                                color: {colors.TEXT_PRIMARY};
+                                color: {colors.TEXT_ACCENT};
                                 font-size: 20px;
                                 font-weight: bold;
                                 font-family: "Roboto Mono";

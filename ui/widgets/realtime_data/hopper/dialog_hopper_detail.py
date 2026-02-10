@@ -397,7 +397,7 @@ class DialogHopperDetail(QDialog):
         self.setStyleSheet(f"""
             QDialog {{
                 background: {colors.BG_DARK};
-                border: 2px solid {colors.BORDER_GLOW};
+                border: 2px solid {colors.BORDER_DARK};
                 border-radius: 8px;
             }}
             
@@ -450,7 +450,7 @@ class DialogHopperDetail(QDialog):
             QPushButton#setLimitBtn {{
                 background: {colors.BUTTON_PRIMARY_BG};
                 color: {colors.BUTTON_PRIMARY_TEXT};
-                border: 1px solid {colors.BORDER_GLOW};
+                border: 1px solid {colors.BORDER_DARK};
                 border-radius: 4px;
                 padding: 4px 12px;
                 font-size: 12px;

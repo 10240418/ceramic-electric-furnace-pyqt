@@ -88,9 +88,6 @@ class CardData(QFrame):
         self.blink_timer = QTimer()
         self.blink_timer.timeout.connect(self.toggle_blink)
         
-        # 报警声音播放计数器（每 10 次更新播放一次，避免频繁播放）
-        self.alarm_sound_counter = 0
-        
         self.init_ui()
         self.apply_styles()
         
@@ -134,11 +131,11 @@ class CardData(QFrame):
             icon_label.setFixedSize(26, 26)
             icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             if is_alarm:
-                icon_color = colors.STATUS_ALARM
+                icon_color = colors.COLOR_ERROR  # 使用错误色
             elif is_warning:
-                icon_color = colors.STATUS_WARNING
+                icon_color = colors.COLOR_WARNING  # 使用警告色
             else:
-                icon_color = colors.BORDER_GLOW
+                icon_color = colors.TEXT_PRIMARY  # 使用主要文字色
             icon_label.setStyleSheet(f"""
                 QLabel {{
                     color: {icon_color};
@@ -173,15 +170,15 @@ class CardData(QFrame):
         
         # 数值（报警时闪烁）
         if is_alarm:
-            value_color = colors.STATUS_ALARM
+            value_color = colors.COLOR_ERROR  # 使用错误色
         elif is_warning:
-            value_color = colors.STATUS_WARNING
+            value_color = colors.COLOR_WARNING  # 使用警告色
         else:
-            value_color = colors.BORDER_GLOW
+            value_color = colors.TEXT_ACCENT  # 使用强调色
         
         value_label = LabelBlinkingFade(item.value)
         value_label.set_blinking(is_alarm)  # 只有报警时闪烁
-        value_label.set_blink_color(colors.STATUS_ALARM)
+        value_label.set_blink_color(colors.COLOR_ERROR)  # 闪烁使用错误色
         value_label.set_normal_color(value_color)
         
         font = QFont("Roboto Mono", 20)
@@ -200,13 +197,13 @@ class CardData(QFrame):
         if item.unit:
             unit_label = LabelBlinkingFade(item.unit)
             unit_label.set_blinking(is_alarm)  # 只有报警时闪烁
-            unit_label.set_blink_color(colors.STATUS_ALARM)
+            unit_label.set_blink_color(colors.COLOR_ERROR)  # 闪烁使用错误色
             if is_alarm:
-                unit_color = colors.STATUS_ALARM
+                unit_color = colors.COLOR_ERROR  # 使用错误色
             elif is_warning:
-                unit_color = colors.STATUS_WARNING
+                unit_color = colors.COLOR_WARNING  # 使用警告色
             else:
-                unit_color = colors.TEXT_SECONDARY
+                unit_color = colors.TEXT_ACCENT  # 单位也使用强调色
             unit_label.set_normal_color(unit_color)
             unit_label.setStyleSheet(f"""
                 QLabel {{
@@ -238,48 +235,41 @@ class CardData(QFrame):
         self.blink_visible = not self.blink_visible
         self.apply_styles()
     
-    # 3.6 播放报警声音（使用全局管理器）
-    def play_alarm_sound(self):
-        """播放报警声音（通过全局管理器，避免多个声音同时播放）"""
-        sound_manager = get_alarm_sound_manager()
-        sound_manager.play_alarm()
+    # 3.6 检查是否正在记录
+    def _is_recording(self) -> bool:
+        """检查是否正在记录（有批次号且正在冶炼）"""
+        try:
+            from backend.services.batch_service import get_batch_service
+            batch_service = get_batch_service()
+            return batch_service.is_smelting
+        except Exception as e:
+            return False
     
-    # 3.7 声音播放完成回调（已移除，由全局管理器处理）
-    
-    # 4. 更新数据项（优化：只更新数值，不重新创建组件）
+    # 4. 更新数据项（完全照搬电极卡片的逻辑）
     def update_items(self, items: list):
         """
         更新数据项
         
-        优化：只更新数值和颜色，不重新创建所有组件
+        完全照搬电极卡片的逻辑：只在记录时报警和播放声音
         """
-        # 检查是否有报警
         old_has_alarm = self.has_alarm
+        
+        # 判断是否有报警（检查所有项）
         self.has_alarm = any(item.get_alarm_status() == 'alarm' for item in items)
         
-        # 只有在"开始记录"时才播放报警声音和闪烁边框
+        # 如果未记录，不报警
         if not self._is_recording():
             self.has_alarm = False
         
-        # 报警声音播放逻辑：
-        # 1. 如果从无报警变为有报警，立即播放声音
-        # 2. 如果一直处于报警状态，每 10 次更新播放一次（避免频繁播放）
-        if self.has_alarm:
-            if not old_has_alarm:
-                # 从无报警变为有报警，立即播放
-                self.play_alarm_sound()
-                self.alarm_sound_counter = 0
-            else:
-                # 一直处于报警状态，每 10 次更新播放一次
-                self.alarm_sound_counter += 1
-                if self.alarm_sound_counter >= 10:
-                    self.play_alarm_sound()
-                    self.alarm_sound_counter = 0
-        else:
-            # 无报警时重置计数器
-            self.alarm_sound_counter = 0
+        # 播放报警声音（从无报警变为有报警）
+        if not old_has_alarm and self.has_alarm:
+            sound_manager = get_alarm_sound_manager()
+            sound_manager.play_alarm("card_data")
+        elif old_has_alarm and not self.has_alarm:
+            sound_manager = get_alarm_sound_manager()
+            sound_manager.stop_alarm("card_data")
         
-        # 启动或停止闪烁
+        # 启动或停止闪烁定时器
         if self.has_alarm and not self.blink_timer.isActive():
             self.blink_timer.start(500)  # 500ms 闪烁一次
         elif not self.has_alarm and self.blink_timer.isActive():
@@ -353,14 +343,14 @@ class CardData(QFrame):
             
             # 更新数值颜色
             if is_alarm:
-                value_color = colors.STATUS_ALARM
-                unit_color = colors.STATUS_ALARM
+                value_color = colors.COLOR_ERROR  # 使用错误色
+                unit_color = colors.COLOR_ERROR  # 单位也使用错误色
             elif is_warning:
-                value_color = colors.STATUS_WARNING
-                unit_color = colors.STATUS_WARNING
+                value_color = colors.COLOR_WARNING  # 使用警告色
+                unit_color = colors.COLOR_WARNING  # 单位也使用警告色
             else:
-                value_color = colors.BORDER_GLOW
-                unit_color = colors.TEXT_SECONDARY
+                value_color = colors.TEXT_ACCENT  # 使用强调色
+                unit_color = colors.TEXT_ACCENT  # 单位也使用强调色
             
             # 查找并更新数值和单位标签
             blinking_labels = row_widget.findChildren(LabelBlinkingFade)
@@ -372,7 +362,7 @@ class CardData(QFrame):
                 value_label.setText(item.value)
                 value_label.set_blinking(is_alarm)
                 value_label.set_normal_color(value_color)
-                value_label.set_blink_color(colors.STATUS_ALARM)
+                value_label.set_blink_color(colors.COLOR_ERROR)  # 闪烁使用错误色
                 
                 # 如果有单位标签，更新单位
                 if len(blinking_labels) >= 2 and item.unit:
@@ -380,7 +370,7 @@ class CardData(QFrame):
                     unit_label.setText(item.unit)
                     unit_label.set_blinking(is_alarm)
                     unit_label.set_normal_color(unit_color)
-                    unit_label.set_blink_color(colors.STATUS_ALARM)
+                    unit_label.set_blink_color(colors.COLOR_ERROR)  # 闪烁使用错误色
     
     # 5. 应用样式（支持边框闪烁）
     def apply_styles(self):
@@ -389,24 +379,38 @@ class CardData(QFrame):
         # 根据报警状态和闪烁状态设置边框颜色
         if self.has_alarm:
             if self.blink_visible:
-                border_color = colors.STATUS_ALARM
+                border_color = colors.COLOR_ERROR  # 使用错误色
             else:
-                border_color = colors.BG_LIGHT  # 闪烁时隐藏边框
+                border_color = colors.BG_CARD  # 闪烁时隐藏边框
         else:
-            border_color = colors.BORDER_GLOW
+            border_color = colors.BORDER_DARK  # 使用深色边框
+        
+        # 将背景色转换为 RGBA 格式，设置 100% 不透明度
+        from PyQt6.QtGui import QColor
+        qcolor_bg = QColor(colors.BG_CARD)
+        bg_color_rgba = f"rgba({qcolor_bg.red()}, {qcolor_bg.green()}, {qcolor_bg.blue()}, 1.0)"
         
         self.setStyleSheet(f"""
             QFrame {{
-                background: {colors.BG_LIGHT};
+                background: {bg_color_rgba};
                 border: 1px solid {border_color};
                 border-radius: 4px;
             }}
             QFrame#dataDivider {{
-                background: {colors.BORDER_ACCENT};
+                background: {colors.BORDER_DARK};
                 border: none;
                 max-height: 1px;
             }}
         """)
+        
+        # 添加阴影效果（1px，颜色为border颜色）
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(4)
+        shadow.setXOffset(2)
+        shadow.setYOffset(2)
+        shadow.setColor(QColor(border_color))
+        self.setGraphicsEffect(shadow)
     
     # 6. 主题变化时重新应用样式
     def on_theme_changed(self):

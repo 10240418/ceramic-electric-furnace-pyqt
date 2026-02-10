@@ -80,7 +80,7 @@ class ButtonTechSecondary(QPushButton):
             }}
             QPushButton:hover {{
                 background: {colors.BUTTON_SECONDARY_HOVER};
-                border: 1px solid {colors.BORDER_GLOW};
+                border: 1px solid {colors.BORDER_DARK};
                 color: {colors.GLOW_PRIMARY};
             }}
             QPushButton:pressed {{

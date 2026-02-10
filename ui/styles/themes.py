@@ -4,13 +4,50 @@
 from enum import Enum
 from typing import Optional
 from PyQt6.QtCore import QObject, pyqtSignal
-from .colors import DarkColors, LightColors, CommonColors
+from .colors import (
+    DarkColors, LightColors, LightChange, CommonColors,
+    OceanBlue, RoseGold, EmeraldNight, SunsetAmber, VioletDream, ArcticFrost,
+    IronForge, ControlRoom, NightShift, SteelLine, SlateGrid, PolarFrame
+)
+
+
+# 主题枚举与颜色类、显示名称的映射
+THEME_REGISTRY = {
+    'dark': {'colors': DarkColors, 'label': '深色', 'accent': '#00d4ff'},
+    'light': {'colors': LightColors, 'label': '浅色', 'accent': '#007663'},
+    'light_change': {'colors': LightChange, 'label': '强浅', 'accent': '#00014D'},
+    'ocean_blue': {'colors': OceanBlue, 'label': '深海蓝', 'accent': '#00b4d8'},
+    'rose_gold': {'colors': RoseGold, 'label': '玫瑰金', 'accent': '#b76e79'},
+    'emerald_night': {'colors': EmeraldNight, 'label': '翡翠夜', 'accent': '#00d68f'},
+    'sunset_amber': {'colors': SunsetAmber, 'label': '日落琥珀', 'accent': '#c06014'},
+    'violet_dream': {'colors': VioletDream, 'label': '紫罗兰', 'accent': '#a855f7'},
+    'arctic_frost': {'colors': ArcticFrost, 'label': '极地霜', 'accent': '#2563eb'},
+    'iron_forge': {'colors': IronForge, 'label': '铁锻', 'accent': '#f0c75e'},
+    'control_room': {'colors': ControlRoom, 'label': '中控室', 'accent': '#e85d4a'},
+    'night_shift': {'colors': NightShift, 'label': '夜班', 'accent': '#c9956a'},
+    'steel_line': {'colors': SteelLine, 'label': '钢线', 'accent': '#455a64'},
+    'slate_grid': {'colors': SlateGrid, 'label': '石墨网格', 'accent': '#8899a6'},
+    'polar_frame': {'colors': PolarFrame, 'label': '极光框架', 'accent': '#0d9488'},
+}
 
 
 class Theme(Enum):
     """主题枚举"""
     DARK = "dark"
     LIGHT = "light"
+    LIGHT_CHANGE = "light_change"
+    OCEAN_BLUE = "ocean_blue"
+    ROSE_GOLD = "rose_gold"
+    EMERALD_NIGHT = "emerald_night"
+    SUNSET_AMBER = "sunset_amber"
+    VIOLET_DREAM = "violet_dream"
+    ARCTIC_FROST = "arctic_frost"
+    IRON_FORGE = "iron_forge"
+    CONTROL_ROOM = "control_room"
+    NIGHT_SHIFT = "night_shift"
+    STEEL_LINE = "steel_line"
+    SLATE_GRID = "slate_grid"
+    POLAR_FRAME = "polar_frame"
 
 
 class ThemeManager(QObject):
@@ -29,7 +66,7 @@ class ThemeManager(QObject):
             # 必须先调用 QObject.__init__
             QObject.__init__(instance)
             instance._initialized = False
-            instance._current_theme = Theme.LIGHT  # 默认使用浅色主题
+            instance._current_theme = Theme.LIGHT_CHANGE  # 默认使用多色主题
             cls._instance = instance
         return cls._instance
     
@@ -54,18 +91,36 @@ class ThemeManager(QObject):
             self._current_theme = theme
             self.theme_changed.emit(theme)
     
-    # 6. 切换主题
+    # 6. 切换主题（循环切换所有主题）
     def toggle_theme(self):
-        new_theme = Theme.LIGHT if self._current_theme == Theme.DARK else Theme.DARK
-        self.set_theme(new_theme)
+        all_themes = list(Theme)
+        current_index = all_themes.index(self._current_theme) if self._current_theme in all_themes else 0
+        next_index = (current_index + 1) % len(all_themes)
+        self.set_theme(all_themes[next_index])
     
     # 7. 是否为深色模式
     def is_dark_mode(self) -> bool:
-        return self._current_theme == Theme.DARK
+        return self._current_theme in (
+            Theme.DARK, Theme.OCEAN_BLUE, Theme.EMERALD_NIGHT, Theme.VIOLET_DREAM,
+            Theme.IRON_FORGE, Theme.CONTROL_ROOM, Theme.NIGHT_SHIFT, Theme.SLATE_GRID
+        )
     
     # 8. 获取当前主题的颜色类
     def get_colors(self):
-        return DarkColors if self.is_dark_mode() else LightColors
+        entry = THEME_REGISTRY.get(self._current_theme.value)
+        if entry:
+            return entry['colors']
+        return DarkColors
+    
+    # 8.1 获取当前主题的显示名称
+    def get_theme_label(self) -> str:
+        entry = THEME_REGISTRY.get(self._current_theme.value)
+        return entry['label'] if entry else ''
+    
+    # 8.2 获取当前主题的强调色
+    def get_theme_accent(self) -> str:
+        entry = THEME_REGISTRY.get(self._current_theme.value)
+        return entry['accent'] if entry else '#00d4ff'
     
     # 9. 获取指定颜色
     def get_color(self, color_name: str) -> str:
@@ -90,15 +145,7 @@ class ThemeManager(QObject):
     def bg_light(self) -> str:
         return self.get_color('BG_LIGHT')
     
-    # 14. 背景色
-    def bg_surface(self) -> str:
-        return self.get_color('BG_SURFACE')
-    
-    # 15. 背景色
-    def bg_overlay(self) -> str:
-        return self.get_color('BG_OVERLAY')
-    
-    # 16. 边框色
+    # 14. 边框色
     def border_dark(self) -> str:
         return self.get_color('BORDER_DARK')
     
@@ -110,23 +157,11 @@ class ThemeManager(QObject):
     def border_light(self) -> str:
         return self.get_color('BORDER_LIGHT')
     
-    # 19. 边框色
+    # 17. 边框色
     def border_glow(self) -> str:
         return self.get_color('BORDER_GLOW')
     
-    # 20. 边框色
-    def border_accent(self) -> str:
-        return self.get_color('BORDER_ACCENT')
-    
-    # 21. 网格线
-    def grid_line(self) -> str:
-        return self.get_color('GRID_LINE')
-    
-    # 22. 分割线
-    def divider(self) -> str:
-        return self.get_color('DIVIDER')
-    
-    # 23. 发光色
+    # 18. 发光色
     def glow_primary(self) -> str:
         return self.get_color('GLOW_PRIMARY')
     
@@ -134,15 +169,11 @@ class ThemeManager(QObject):
     def glow_secondary(self) -> str:
         return self.get_color('GLOW_SECONDARY')
     
-    # 25. 发光色
+    # 19. 发光色
     def glow_cyan(self) -> str:
         return self.get_color('GLOW_CYAN')
     
-    # 26. 发光色
-    def glow_cyan_light(self) -> str:
-        return self.get_color('GLOW_CYAN_LIGHT')
-    
-    # 27. 发光色
+    # 20. 发光色
     def glow_green(self) -> str:
         return self.get_color('GLOW_GREEN')
     
@@ -162,23 +193,15 @@ class ThemeManager(QObject):
     def glow_yellow(self) -> str:
         return self.get_color('GLOW_YELLOW')
     
-    # 32. 发光色
-    def glow_purple(self) -> str:
-        return self.get_color('GLOW_PURPLE')
-    
-    # 33. 文字色
+    # 26. 文字色
     def text_primary(self) -> str:
         return self.get_color('TEXT_PRIMARY')
     
-    # 34. 文字色
+    # 27. 文字色
     def text_secondary(self) -> str:
         return self.get_color('TEXT_SECONDARY')
     
-    # 35. 文字色
-    def text_tertiary(self) -> str:
-        return self.get_color('TEXT_TERTIARY')
-    
-    # 36. 文字色
+    # 28. 文字色
     def text_muted(self) -> str:
         return self.get_color('TEXT_MUTED')
     
@@ -186,15 +209,7 @@ class ThemeManager(QObject):
     def text_disabled(self) -> str:
         return self.get_color('TEXT_DISABLED')
     
-    # 38. 文字色
-    def text_inverse(self) -> str:
-        return self.get_color('TEXT_INVERSE')
-    
-    # 39. 文字色
-    def text_link(self) -> str:
-        return self.get_color('TEXT_LINK')
-    
-    # 40. 文字色
+    # 30. 文字色
     def text_accent(self) -> str:
         return self.get_color('TEXT_ACCENT')
     
@@ -202,19 +217,11 @@ class ThemeManager(QObject):
     def text_on_primary(self) -> str:
         return self.get_color('TEXT_ON_PRIMARY')
     
-    # 42. 文字色
+    # 32. 文字色
     def text_selected(self) -> str:
         return self.get_color('TEXT_SELECTED')
     
-    # 43. 文字色
-    def text_focus(self) -> str:
-        return self.get_color('TEXT_FOCUS')
-    
-    # 44. 状态色
-    def status_normal(self) -> str:
-        return self.get_color('STATUS_NORMAL')
-    
-    # 45. 状态色
+    # 33. 状态色
     def status_success(self) -> str:
         return self.get_color('STATUS_SUCCESS')
     
@@ -226,23 +233,11 @@ class ThemeManager(QObject):
     def status_alarm(self) -> str:
         return self.get_color('STATUS_ALARM')
     
-    # 48. 状态色
+    # 36. 状态色
     def status_error(self) -> str:
         return self.get_color('STATUS_ERROR')
     
-    # 49. 状态色
-    def status_info(self) -> str:
-        return self.get_color('STATUS_INFO')
-    
-    # 50. 状态色
-    def status_offline(self) -> str:
-        return self.get_color('STATUS_OFFLINE')
-    
-    # 51. 状态色
-    def status_disabled(self) -> str:
-        return self.get_color('STATUS_DISABLED')
-    
-    # 52. 按钮色
+    # 37. 按钮色
     def button_primary_bg(self) -> str:
         return self.get_color('BUTTON_PRIMARY_BG')
     
@@ -266,31 +261,11 @@ class ThemeManager(QObject):
     def input_border_focus(self) -> str:
         return self.get_color('INPUT_BORDER_FOCUS')
     
-    # 58. 卡片色
+    # 40. 卡片色
     def card_bg(self) -> str:
         return self.get_color('CARD_BG')
     
-    # 59. 卡片色
-    def card_border(self) -> str:
-        return self.get_color('CARD_BORDER')
-    
-    # 60. 卡片色
-    def card_hover_border(self) -> str:
-        return self.get_color('CARD_HOVER_BORDER')
-    
-    # 61. 表格色
-    def table_bg(self) -> str:
-        return self.get_color('TABLE_BG')
-    
-    # 62. 表格色
-    def table_header_bg(self) -> str:
-        return self.get_color('TABLE_HEADER_BG')
-    
-    # 63. 表格色
-    def table_header_text(self) -> str:
-        return self.get_color('TABLE_HEADER_TEXT')
-    
-    # 64. 图表色
+    # 41. 图表色
     def chart_line_1(self) -> str:
         return self.get_color('CHART_LINE_1')
     
@@ -310,71 +285,19 @@ class ThemeManager(QObject):
     def chart_line_5(self) -> str:
         return self.get_color('CHART_LINE_5')
     
-    # 69. 图表色
+    # 47. 图表色
     def chart_line_6(self) -> str:
         return self.get_color('CHART_LINE_6')
     
-    # 70. 图表色
-    def chart_grid(self) -> str:
-        return self.get_color('CHART_GRID')
-    
-    # 71. 图表色
-    def chart_axis(self) -> str:
-        return self.get_color('CHART_AXIS')
-    
-    # 72. 图表色
-    def chart_bg(self) -> str:
-        return self.get_color('CHART_BG')
-    
-    # 73. 下拉框色
-    def dropdown_bg(self) -> str:
-        return self.get_color('DROPDOWN_BG')
-    
-    # 74. 下拉框色
-    def dropdown_border(self) -> str:
-        return self.get_color('DROPDOWN_BORDER')
-    
-    # 75. 标签页色
-    def tab_bg(self) -> str:
-        return self.get_color('TAB_BG')
-    
-    # 76. 标签页色
-    def tab_active_bg(self) -> str:
-        return self.get_color('TAB_ACTIVE_BG')
-    
-    # 77. 标签页色
-    def tab_active_border(self) -> str:
-        return self.get_color('TAB_ACTIVE_BORDER')
-    
-    # 78. 阴影与发光
-    def shadow_light(self) -> str:
-        return self.get_color('SHADOW_LIGHT')
-    
-    # 79. 阴影与发光
-    def shadow_medium(self) -> str:
-        return self.get_color('SHADOW_MEDIUM')
-    
-    # 80. 阴影与发光
-    def shadow_heavy(self) -> str:
-        return self.get_color('SHADOW_HEAVY')
-    
-    # 81. 阴影与发光
-    def glow_effect(self) -> str:
-        return self.get_color('GLOW_EFFECT')
-    
-    # 82. 阴影与发光
+    # 48. 阴影与发光
     def overlay_light(self) -> str:
         return self.get_color('OVERLAY_LIGHT')
     
-    # 83. 阴影与发光
+    # 49. 阴影与发光
     def overlay_medium(self) -> str:
         return self.get_color('OVERLAY_MEDIUM')
     
-    # 84. 阴影与发光
-    def overlay_heavy(self) -> str:
-        return self.get_color('OVERLAY_HEAVY')
-    
-    # 85. 通用色
+    # 50. 通用色
     @staticmethod
     def transparent() -> str:
         return CommonColors.TRANSPARENT

@@ -226,7 +226,7 @@ class CardStatusDb30(QFrame):
         self.setStyleSheet(f"""
             CardStatusDb30 {{
                 background: {tm.card_bg()};
-                border: 1px solid {tm.card_border()};
+                border: 1px solid {tm.border_dark()};
                 border-radius: 4px;
             }}
             
@@ -308,18 +308,18 @@ class CardStatusDb30(QFrame):
             
             /* 设备卡片 */
             QWidget#device_card {{
-                background: {tm.bg_surface()};
+                background: {tm.bg_medium()};
                 border: 1px solid {tm.border_dark()};
                 border-radius: 6px;
             }}
             
             QWidget#device_card:hover {{
-                background: {tm.bg_overlay()};
+                background: {tm.bg_light()};
                 border: 1px solid {tm.border_medium()};
             }}
             
             QLabel#device_index {{
-                color: {tm.text_tertiary()};
+                color: {tm.text_secondary()};
                 border: none;
                 background: transparent;
             }}

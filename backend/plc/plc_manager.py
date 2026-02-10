@@ -3,11 +3,13 @@
 # ============================================================
 # 功能:
 #   1. 维护 PLC 长连接（避免频繁连接/断开）
-#   2. 自动重连机制
+#   2. 自动重连机制（连续失败 N 次才重连）
 #   3. 连接健康检查
 #   4. 线程安全读写
+#   5. 进程退出时自动清理连接
 # ============================================================
 
+import atexit
 import threading
 import time
 from typing import Optional, Tuple, Dict, Any
@@ -126,7 +128,16 @@ class PLCManager:
                 pass
             self._client = None
         self._connected = False
-        print(" PLC 连接已断开")
+        print("PLC 连接已断开")
+    
+    def _reconnect_with_wait(self) -> Tuple[bool, str]:
+        """断开并等待后重连 (不加锁，供已持有锁的方法调用)
+        
+        PLC 需要时间释放旧连接槽，直接重连可能失败
+        """
+        self._disconnect_internal()
+        time.sleep(2.0)  # 等待 PLC 释放旧连接
+        return self._connect_internal()
     
     def read_db(self, db_number: int, start: int, size: int) -> Tuple[Optional[bytes], str]:
         """读取 DB 块数据
@@ -159,10 +170,20 @@ class PLCManager:
                 # 使用限流器记录错误日志（60秒内只记录一次）
                 log_throttler.log_error("plc_read_failed", f"PLC 读取失败 DB{db_number}: {e}")
                 
-                # 连续错误过多，强制重连
+                # 连续错误过多，强制重连并重试一次
                 if self._consecutive_error_count >= self._max_consecutive_errors:
                     log_throttler.log_error("plc_force_reconnect", f"连续 {self._consecutive_error_count} 次错误，强制重连")
-                    self._disconnect_internal()
+                    success, _ = self._reconnect_with_wait()
+                    if success:
+                        # 重连成功，重试本次读取
+                        try:
+                            data = self._client.db_read(db_number, start, size)
+                            self._last_read_time = datetime.now()
+                            self._consecutive_error_count = 0
+                            return (bytes(data), "")
+                        except Exception as e2:
+                            log_throttler.log_error("plc_read_retry_failed", f"PLC 重连后读取仍失败 DB{db_number}: {e2}")
+                            return (None, str(e2))
                 
                 return (None, str(e))
     
@@ -357,3 +378,19 @@ def reset_plc_manager() -> None:
     if _plc_manager is not None:
         _plc_manager.disconnect()
         _plc_manager = None
+
+
+def close_plc_manager() -> None:
+    """关闭 PLC 连接（进程退出时调用）"""
+    global _plc_manager
+    if _plc_manager is not None:
+        try:
+            _plc_manager.disconnect()
+        except:
+            pass
+        _plc_manager = None
+        print("PLC Manager 已清理")
+
+
+# 注册退出清理，确保进程退出时释放 PLC 连接槽
+atexit.register(close_plc_manager)

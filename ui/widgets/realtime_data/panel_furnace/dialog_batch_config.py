@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from datetime import datetime
 from ui.styles.themes import ThemeManager
 from backend.bridge.history_query import HistoryQueryService
+from backend.config import get_settings
 from loguru import logger
 
 
@@ -19,9 +20,10 @@ class DialogBatchConfig(QDialog):
     batch_confirmed = pyqtSignal(str)
     
     # 1. 初始化对话框
-    def __init__(self, furnace_number: int = 3, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.furnace_number = furnace_number
+        # 从 .env 配置读取炉号
+        self.furnace_number = get_settings().number
         self.theme_manager = ThemeManager.instance()
         self.history_service = HistoryQueryService.get_instance()
         
@@ -437,7 +439,7 @@ class DialogBatchConfig(QDialog):
             }}
             
             QComboBox:hover {{
-                border: 1px solid {colors.BORDER_GLOW};
+                border: 1px solid {colors.BORDER_DARK};
             }}
             
             QComboBox::drop-down {{
@@ -458,7 +460,7 @@ class DialogBatchConfig(QDialog):
             QComboBox QAbstractItemView {{
                 background: {colors.BG_DARK};
                 color: {colors.TEXT_PRIMARY};
-                border: 1px solid {colors.BORDER_GLOW};
+                border: 1px solid {colors.BORDER_DARK};
                 selection-background-color: {colors.GLOW_PRIMARY}33;
                 selection-color: {colors.TEXT_PRIMARY};
                 outline: none;
@@ -485,7 +487,7 @@ class DialogBatchConfig(QDialog):
             }}
             
             QSpinBox:hover {{
-                border: 1px solid {colors.BORDER_GLOW};
+                border: 1px solid {colors.BORDER_DARK};
             }}
             
             QSpinBox::up-button, QSpinBox::down-button {{
@@ -502,7 +504,7 @@ class DialogBatchConfig(QDialog):
             }}
             
             QPushButton#btnMinus:hover, QPushButton#btnPlus:hover {{
-                border: 1px solid {colors.BORDER_GLOW};
+                border: 1px solid {colors.BORDER_DARK};
                 background: {colors.BG_MEDIUM};
             }}
             
@@ -519,7 +521,7 @@ class DialogBatchConfig(QDialog):
             }}
             
             QPushButton#btnCancel:hover {{
-                border: 1px solid {colors.BORDER_GLOW};
+                border: 1px solid {colors.BORDER_DARK};
                 color: {colors.TEXT_PRIMARY};
             }}
             

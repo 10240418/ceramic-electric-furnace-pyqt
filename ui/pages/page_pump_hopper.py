@@ -1,5 +1,5 @@
 """
-泵房/料仓页面 - 包含除尘器、水泵等设备（料仓功能已迁移到 page_elec_3.py）
+泵房/料仓页面 - 包含除尘器、水泵等设备（料仓功能已迁移到 page_realtime.py）
 """
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 

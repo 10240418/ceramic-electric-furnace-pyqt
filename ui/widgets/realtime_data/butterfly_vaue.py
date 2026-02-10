@@ -134,8 +134,8 @@ class IndicatorValve(QFrame):
         colors = self.theme_manager.get_colors()
         value = int(self.open_percentage)
         self.percent_label.setText(
-            f'<span style="font-size: 28px; font-weight: bold; font-family: Roboto Mono; color: {colors.TEXT_PRIMARY};">{value}</span>'
-            f'<span style="font-size: 18px; font-weight: normal; font-family: Roboto Mono; color: {colors.TEXT_PRIMARY};">%</span>'
+            f'<span style="font-size: 28px; font-weight: bold; font-family: Roboto Mono; color: {colors.TEXT_BUTTERFLY_LEFT};">{value}</span>'
+            f'<span style="font-size: 18px; font-weight: normal; font-family: Roboto Mono; color: {colors.TEXT_BUTTERFLY_LEFT};">%</span>'
         )
     
     # 5. 设置状态
@@ -164,26 +164,26 @@ class IndicatorValve(QFrame):
         self.btn_stop.setStyleSheet(self.get_button_style(is_stop_active, colors))
         self.btn_open.setStyleSheet(self.get_button_style(is_open_active, colors))
     
-    # 7. 获取按钮样式（主按钮样式，取消圆角和padding，完全贴边）
+    # 7. 获取按钮样式（主按钮/次要按钮，取消圆角和padding，完全贴边）
     def get_button_style(self, is_active: bool, colors) -> str:
         if is_active:
-            # 激活状态：主按钮样式
+            # 激活状态：主要按钮样式
             return f"""
                 QLabel#statusBtn {{
-                    background: {colors.GLOW_PRIMARY};
-                    color: {colors.TEXT_ON_PRIMARY};
-                    border: 1px solid {colors.GLOW_PRIMARY};
+                    background: {colors.BUTTON_PRIMARY_BG};
+                    color: {colors.BUTTON_PRIMARY_TEXT};
+                    border: 1px solid {colors.BUTTON_PRIMARY_BG};
                     border-radius: 0px;
                     padding: 0px;
                     font-weight: bold;
                 }}
             """
         else:
-            # 非激活状态：普通样式
+            # 非激活状态：使用 BG_CARD 背景色
             return f"""
                 QLabel#statusBtn {{
-                    background: transparent;
-                    color: {colors.TEXT_PRIMARY};
+                    background: {colors.BG_CARD};
+                    color: {colors.BUTTON_SECOND_TEXT};
                     border: 1px solid {colors.BORDER_MEDIUM};
                     border-radius: 0px;
                     padding: 0px;
@@ -197,8 +197,8 @@ class IndicatorValve(QFrame):
         
         self.setStyleSheet(f"""
             QFrame {{
-                background: {colors.BG_LIGHT};
-                border: 1px solid {colors.BORDER_GLOW};
+                background: {colors.BG_DEEP};
+                border: 1px solid {colors.BORDER_DARK};
                 border-radius: 4px;
             }}
         """)
@@ -207,14 +207,14 @@ class IndicatorValve(QFrame):
         self.status_container.setStyleSheet(f"""
             QFrame#statusContainer {{
                 background: transparent;
-                border: 1px solid {colors.BORDER_GLOW};
+                border: 1px solid {colors.BORDER_DARK};
                 border-radius: 4px;
             }}
         """)
         
         self.num_label.setStyleSheet(f"""
             QLabel {{
-                color: {colors.TEXT_PRIMARY};
+                color: {colors.TEXT_BUTTERFLY_LEFT};
                 background: transparent;
                 border: none;
             }}
@@ -283,9 +283,9 @@ class GaugeWidget(QWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawArc(rect, 0 * 16, 180 * 16)  # 从0度（右边）逆时针到180度（左边）
     
-    # 4. 绘制刻度和标签（上半部分，灰/白配色）
+    # 4. 绘制刻度和标签（上半部分）
     def draw_scale_marks(self, painter: QPainter, cx: float, cy: float, radius: float, colors):
-        # 刻度：全开(180°左) 3/4(135°) 1/2(90°上) 1/4(45°) 全关(0°右)
+        # 刻度：全开(180度左) 3/4(135度) 1/2(90度上) 1/4(45度) 全关(0度右)
         scales = [
             (180, "全开"),
             (135, "3/4"),
@@ -294,7 +294,7 @@ class GaugeWidget(QWidget):
             (0, "全关")
         ]
         
-        painter.setPen(QColor(colors.TEXT_PRIMARY))
+        painter.setPen(QColor(colors.TEXT_BUTTERFLY_LEFT))
         font = QFont("Microsoft YaHei", 10)
         font.setBold(True)
         painter.setFont(font)
@@ -309,8 +309,8 @@ class GaugeWidget(QWidget):
             mark_end_x = cx + radius * math.cos(angle_rad)
             mark_end_y = cy - radius * math.sin(angle_rad)
             
-            # 绘制刻度线（灰/白色）
-            painter.setPen(QPen(QColor(colors.TEXT_PRIMARY), 3))
+            # 绘制刻度线
+            painter.setPen(QPen(QColor(colors.TEXT_BUTTERFLY_LEFT), 3))
             painter.drawLine(QPointF(mark_start_x, mark_start_y), QPointF(mark_end_x, mark_end_y))
             
             # 标签位置（向外延伸，从15px改为12px，让标签更靠近弧线）
@@ -324,12 +324,12 @@ class GaugeWidget(QWidget):
                 label_x += 6  # 向右移动6px
             
             # 绘制标签
-            painter.setPen(QColor(colors.TEXT_PRIMARY))
+            painter.setPen(QColor(colors.TEXT_BUTTERFLY_LEFT))
             painter.drawText(QRectF(label_x - 25, label_y - 12, 50, 24), Qt.AlignmentFlag.AlignCenter, label)
     
     # 5. 绘制指针（三角形指针，指向上半部分）
     def draw_needle(self, painter: QPainter, cx: float, cy: float, radius: float, colors):
-        # 计算指针角度（0% = 0°全关右边, 100% = 180°全开左边）
+        # 计算指针角度（0% = 0度全关右边, 100% = 180度全开左边）
         # 指针在上半部分旋转
         needle_angle_deg = (self.indicator.open_percentage / 100.0) * 180
         needle_angle_rad = math.radians(needle_angle_deg)
@@ -340,12 +340,6 @@ class GaugeWidget(QWidget):
         # 指针终点（注意：y轴向下，所以用减号让指针指向上方）
         needle_x = cx + needle_length * math.cos(needle_angle_rad)
         needle_y = cy - needle_length * math.sin(needle_angle_rad)
-        
-        # 绘制三角形指针
-        # 三角形的三个顶点：
-        # 1. 尖端（指针终点）
-        # 2. 左侧底部
-        # 3. 右侧底部
         
         # 三角形底部宽度
         base_width = 12
@@ -371,13 +365,13 @@ class GaugeWidget(QWidget):
         path.closeSubpath()
         
         # 填充三角形
-        painter.setBrush(QColor(colors.TEXT_PRIMARY))
-        painter.setPen(QPen(QColor(colors.TEXT_PRIMARY), 2))
+        painter.setBrush(QColor(colors.TEXT_BUTTERFLY_LEFT))
+        painter.setPen(QPen(QColor(colors.TEXT_BUTTERFLY_LEFT), 2))
         painter.drawPath(path)
     
     # 6. 绘制中心圆
     def draw_center_circle(self, painter: QPainter, cx: float, cy: float, colors):
-        painter.setBrush(QColor(colors.TEXT_PRIMARY))
+        painter.setBrush(QColor(colors.TEXT_BUTTERFLY_LEFT))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(QPointF(cx, cy), 8, 8)
 
