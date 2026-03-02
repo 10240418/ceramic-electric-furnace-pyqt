@@ -215,7 +215,12 @@ def write_emergency_delay_to_plc(delay_ms: int) -> Dict[str, Any]:
 
 def write_arc_limit_and_delay_to_plc(arc_limit: int, delay_ms: int) -> Dict[str, Any]:
     """
-    同时写入弧流上限值和消抖时间到 PLC DB1（批量写入）
+    同时写入弧流上限值和消抖时间到 PLC DB36（持久化配置块）
+    
+    DB36 结构 (furnace_conf_persist, 8字节):
+      offset 0-1: emergency_stop_arc_limit (INT, 2字节)
+      offset 2-5: emergency_stop_delay (TIME, 4字节)
+      offset 6-7: emergency_stop_enabled (BOOL, 2字节, 独立)
     
     Args:
         arc_limit: 弧流上限值 (A)
@@ -247,35 +252,28 @@ def write_arc_limit_and_delay_to_plc(arc_limit: int, delay_ms: int) -> Dict[str,
                     'message': 'PLC 连接失败，无法写入数据'
                 }
         
-        # 4. 构建数据包（8字节）
-        # offset 182-183: arc_limit (INT, 2字节)
-        # offset 184-185: 保留字节（不写入，跳过）
-        # offset 186-189: delay_ms (TIME, 4字节)
+        # 4. 构建数据包
+        # DB36 offset 0-1: arc_limit (INT, 2字节)
+        # DB36 offset 2-5: delay_ms (TIME, 4字节)
+        # 两个字段连续, 可合并为一次 6 字节写入
         
-        # 方案：分两次写入（因为中间有保留字节）
+        combined_bytes = struct.pack('>h', arc_limit) + struct.pack('>i', delay_ms)
         
-        # 4.1 写入弧流上限值 (offset 182)
-        arc_limit_bytes = struct.pack('>h', arc_limit)
+        db_number = 36
         
-        # 4.2 写入消抖时间 (offset 186)
-        delay_bytes = struct.pack('>i', delay_ms)
+        logger.info(f"准备写入 PLC DB{db_number}: 弧流上限 {arc_limit} A, 消抖时间 {delay_ms} ms")
         
-        db_number = 1
+        # 5. 执行写入 (offset 0, 6字节连续写入)
+        result = plc.write_db(db_number, 0, combined_bytes)
         
-        logger.info(f"准备批量写入 PLC DB{db_number}: 弧流上限 {arc_limit} A, 消抖时间 {delay_ms} ms")
-        
-        # 5. 执行写入（分两次）
-        result1 = plc.write_db(db_number, 182, arc_limit_bytes)
-        result2 = plc.write_db(db_number, 186, delay_bytes)
-        
-        if result1 and result2:
-            logger.info(f"成功批量写入: 弧流上限 {arc_limit} A, 消抖时间 {delay_ms} ms")
+        if result:
+            logger.info(f"成功写入 DB{db_number}: 弧流上限 {arc_limit} A, 消抖时间 {delay_ms} ms")
             return {
                 'success': True,
                 'message': f'设置成功: 弧流上限 {arc_limit} A, 消抖时间 {delay_ms} ms'
             }
         else:
-            logger.error(f"批量写入 PLC 失败 (result1={result1}, result2={result2})")
+            logger.error(f"写入 PLC DB{db_number} 失败 (result={result})")
             return {
                 'success': False,
                 'message': '写入 PLC 失败，请检查 PLC 连接'

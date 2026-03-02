@@ -54,11 +54,13 @@ settings = get_settings()
 _db1_task: Optional[asyncio.Task] = None
 _db32_task: Optional[asyncio.Task] = None
 _status_task: Optional[asyncio.Task] = None
+_db36_task: Optional[asyncio.Task] = None
 
 # 运行标志
 _db1_running = False
 _db32_running = False
 _status_running = False
+_db36_running = False
 
 # DB1 轮询间隔 (秒) - 可动态修改 (默认值从 .env 读取)
 _db1_interval: float = settings.db1_polling_interval
@@ -478,12 +480,88 @@ async def _status_polling_loop(
 
 
 # ============================================================
+# 6: DB36 持久化配置轮询模块 (固定 5s)
+# ============================================================
+async def _db36_config_polling_loop(
+    parser,
+    process_func,
+    is_mock: bool = False
+):
+    """DB36 持久化配置轮询 (固定 5s)
+    
+    读取紧急停机参数: 弧流上限、消抖延时、使能标志
+    
+    Args:
+        parser: DB36 解析器
+        process_func: 数据处理函数 (process_db36_data)
+        is_mock: 是否 Mock 模式
+    """
+    poll_count = 0
+    error_count = 0
+    MAX_ERROR_COUNT = 10
+    FIXED_WAIT_TIME = 30
+    interval = 5  # 配置数据变化不频繁, 5s 轮询即可
+    
+    db_number = parser.get_db_number()
+    db_size = parser.get_total_size()
+    
+    logger.info(f"DB36 配置轮询已启动 (DB{db_number}, size={db_size}, 间隔: {interval}s)")
+    
+    if not is_mock:
+        plc = get_plc_manager()
+    
+    while _db36_running:
+        try:
+            poll_count += 1
+            
+            if is_mock:
+                from backend.services.polling_data_generator import generate_mock_db36_data
+                raw_data = generate_mock_db36_data()
+            else:
+                if not plc.is_connected():
+                    plc.connect()
+                
+                result = plc.read_db(db_number, 0, db_size)
+                if isinstance(result, (tuple, list)) and len(result) == 2:
+                    raw_data, err = result
+                else:
+                    raw_data = None
+            
+            if raw_data:
+                process_func(raw_data)
+            
+            # 成功后重置错误计数器
+            error_count = 0
+            
+            await asyncio.sleep(interval)
+            
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            error_count += 1
+            
+            if error_count >= MAX_ERROR_COUNT:
+                logger.error(f"DB36 配置轮询异常 (第{error_count}次, 已达上限): {e}")
+                if error_count == MAX_ERROR_COUNT:
+                    logger.warning(f"DB36 配置轮询连续失败 {MAX_ERROR_COUNT} 次, 后续固定等待 {FIXED_WAIT_TIME}s")
+                await asyncio.sleep(FIXED_WAIT_TIME)
+            else:
+                wait_time = min(FIXED_WAIT_TIME, 2 ** min(error_count - 1, 4))
+                logger.error(f"DB36 配置轮询异常 (第{error_count}次): {e}")
+                if error_count <= 3:
+                    logger.error(traceback.format_exc())
+                await asyncio.sleep(wait_time)
+    
+    logger.info("DB36 配置轮询已停止")
+
+
+# ============================================================
 # 启动/停止函数 (供 main.py 调用)
 # ============================================================
 async def start_all_polling_loops():
     """启动所有轮询任务 (自动启动)"""
-    global _db1_task, _db32_task, _status_task
-    global _db1_running, _db32_running, _status_running
+    global _db1_task, _db32_task, _status_task, _db36_task
+    global _db1_running, _db32_running, _status_running, _db36_running
     global _db1_interval
     
     from backend.services.polling_data_processor import (
@@ -494,13 +572,14 @@ async def start_all_polling_loops():
         process_status_data,
         process_db41_data,
         process_hopper_plc_data,
+        process_db36_data,
     )
     
     # 初始化解析器
     init_parsers()
     
     # 获取解析器
-    db1_parser, modbus_parser, status_parser, db41_parser, db18_parser, db19_parser = get_parsers()
+    db1_parser, modbus_parser, status_parser, db41_parser, db18_parser, db19_parser, db36_parser = get_parsers()
     
     # 从配置管理器获取轮询间隔
     from backend.config.polling_config import get_polling_config
@@ -519,6 +598,7 @@ async def start_all_polling_loops():
     _db1_running = True
     _db32_running = True
     _status_running = True
+    _db36_running = True
     
     is_mock = settings.mock_mode
     mode_text = "Mock" if is_mock else "PLC"
@@ -529,6 +609,7 @@ async def start_all_polling_loops():
     logger.info("   DB32 传感器: 0.5s (高频, 含冷却水流量计算)")
     logger.info("   料仓 PLC: 0.5s (DB18+DB19+Q区+I区)")
     logger.info("   DB30/DB41 状态: 5s (固定)")
+    logger.info("   DB36 持久化配置: 5s (固定)")
     logger.info("=" * 60)
     
     # 创建任务
@@ -554,18 +635,25 @@ async def start_all_polling_loops():
         process_db41_data,
         is_mock=is_mock
     ))
+    
+    _db36_task = asyncio.create_task(_db36_config_polling_loop(
+        db36_parser,
+        process_db36_data,
+        is_mock=is_mock
+    ))
 
 
 async def stop_all_polling_loops():
     """停止所有轮询任务"""
-    global _db1_task, _db32_task, _status_task
-    global _db1_running, _db32_running, _status_running
+    global _db1_task, _db32_task, _status_task, _db36_task
+    global _db1_running, _db32_running, _status_running, _db36_running
     
     _db1_running = False
     _db32_running = False
     _status_running = False
+    _db36_running = False
     
-    tasks = [_db1_task, _db32_task, _status_task]
+    tasks = [_db1_task, _db32_task, _status_task, _db36_task]
     for task in tasks:
         if task:
             task.cancel()
@@ -600,4 +688,5 @@ def get_polling_loops_status():
         "db1_interval": _db1_interval,
         "db32_running": _db32_running,
         "status_running": _status_running,
+        "db36_running": _db36_running,
     }

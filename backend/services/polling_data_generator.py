@@ -404,7 +404,7 @@ def generate_mock_db32_data() -> bytes:
 
 
 def generate_mock_db1_data() -> bytes:
-    """生成 Mock DB1 弧流弧压数据 (185字节)
+    """生成 Mock DB1 弧流弧压数据 (184字节)
     
     数据结构（根据实际PLC配置）:
     - offset 0-7: 电机输出 (4 x Int)
@@ -424,11 +424,9 @@ def generate_mock_db1_data() -> bytes:
       - 64-65: 死区下限 (INT, A)
       - 66-67: 死区上限 (INT, A)
     - offset 68-181: 其他变量
-    - offset 182-184: 紧急停电弧流设置
-      - 182-183: 弧流上限 (INT, A)
-      - 184: 紧急停电标志和启用位 (BYTE)
+    - offset 182-183: 紧急停电标志 (standalone BOOL, 2字节)
     """
-    data = bytearray(185)
+    data = bytearray(184)
     
     # ========================================
     # 电机输出 (offset 0-7, 4 x Int)
@@ -548,22 +546,44 @@ def generate_mock_db1_data() -> bytes:
         struct.pack_into('>h', data, i, random.randint(0, 100))
     
     # ========================================
-    # 高压紧急停电弧流设置 (offset 182-186)
+    # 紧急停电标志 (offset 182-183, standalone BOOL, 2字节)
+    # emergency_stop_flag: bit 0 of byte 182
     # ========================================
-    # emergency_stop_arc_limit (offset 182-183, INT, A)
-    # 模拟弧流上限值 6000-7000 A
-    emergency_arc_limit = random.randint(6000, 7000)
-    struct.pack_into('>h', data, 182, emergency_arc_limit)
-    
-    # emergency_stop_flag (offset 184, bit 0, BOOL)
-    # emergency_stop_enabled (offset 184, bit 1, BOOL)
-    # 模拟: 80% 概率启用, 20% 概率触发紧急停电
-    emergency_byte = 0x00
-    if random.random() < 0.8:
-        emergency_byte |= 0x02  # bit 1 = 1 (启用)
+    # 20% 概率触发紧急停电标志
     if random.random() < 0.2:
-        emergency_byte |= 0x01  # bit 0 = 1 (触发紧急停电)
-    data[184] = emergency_byte
+        data[182] = 0x01  # bit 0 = 1 (触发)
+    else:
+        data[182] = 0x00  # bit 0 = 0 (未触发)
+    
+    return bytes(data)
+
+
+def generate_mock_db36_data() -> bytes:
+    """生成 Mock DB36 持久化配置数据 (8字节)
+    
+    DB36 结构 (furnace_conf_persist):
+      offset 0-1: emergency_stop_arc_limit (INT, 2字节, A)
+      offset 2-5: emergency_stop_delay (TIME, 4字节, ms)
+      offset 6-7: emergency_stop_enabled (standalone BOOL, 2字节)
+    """
+    data = bytearray(8)
+    
+    # emergency_stop_arc_limit (offset 0-1, INT)
+    # 模拟弧流上限值 6000-8000 A
+    arc_limit = random.randint(6000, 8000)
+    struct.pack_into('>h', data, 0, arc_limit)
+    
+    # emergency_stop_delay (offset 2-5, TIME/DINT, ms)
+    # 模拟消抖延时 100-500 ms
+    delay_ms = random.randint(100, 500)
+    struct.pack_into('>i', data, 2, delay_ms)
+    
+    # emergency_stop_enabled (offset 6-7, standalone BOOL)
+    # 80% 概率启用
+    if random.random() < 0.8:
+        data[6] = 0x01  # bit 0 = 1 (启用)
+    else:
+        data[6] = 0x00  # bit 0 = 0 (禁用)
     
     return bytes(data)
 

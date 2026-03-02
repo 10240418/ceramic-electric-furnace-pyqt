@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo #3电炉 - PyQt6 打包脚本
+echo ElectricFurnace - PyQt6 打包脚本
 echo ========================================
 echo.
 
@@ -44,8 +44,8 @@ echo.
 REM 4. 复制 .env 配置文件到打包目录
 echo [4/5] 复制 .env 配置文件...
 if exist .env (
-    copy /Y .env "dist\3号电炉\.env"
-    echo .env 已复制到 dist\3号电炉\
+    copy /Y .env "dist\ElectricFurnace\.env"
+    echo .env 已复制到 dist\ElectricFurnace\
 ) else (
     echo 警告: .env 文件不存在，请手动创建
 )
@@ -56,10 +56,10 @@ echo [5/5] 打包完成！
 echo.
 echo ========================================
 echo 打包结果：
-echo   可执行文件位置: dist\3号电炉\3号电炉.exe
-echo   配置文件: dist\3号电炉\.env
+echo   可执行文件位置: dist\ElectricFurnace\ElectricFurnace.exe
+echo   配置文件: dist\ElectricFurnace\.env
 echo   文件夹大小: 
-dir dist\3号电炉 | find "个文件"
+dir dist\ElectricFurnace | find "个文件"
 echo ========================================
 echo.
 echo 提示：

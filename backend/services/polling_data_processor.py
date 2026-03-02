@@ -64,6 +64,7 @@ from collections import deque
 from backend.core.influxdb import write_points_batch, build_point
 from backend.plc.parser_config_db32 import ConfigDrivenDB32Parser
 from backend.plc.parser_config_db1 import ConfigDrivenDB1Parser
+from backend.plc.parser_config_db36 import ConfigDrivenDB36Parser
 from backend.plc.parser_status import ModbusStatusParser
 from backend.plc.parser_status_db41 import DataStateParser
 from backend.tools.converter_furnace import FurnaceConverter
@@ -81,6 +82,7 @@ from backend.services.db1.power_energy_calculator import get_power_energy_calcul
 # ============================================================
 _modbus_parser: Optional[ConfigDrivenDB32Parser] = None  # DB32 传感器解析器
 _db1_parser: Optional[ConfigDrivenDB1Parser] = None      # DB1 弧流弧压解析器
+_db36_parser: Optional[ConfigDrivenDB36Parser] = None    # DB36 持久化配置解析器
 _status_parser: Optional[ModbusStatusParser] = None       # DB30 状态解析器
 _db41_parser: Optional[DataStateParser] = None            # DB41 数据状态解析器
 _db18_parser: Optional['HopperDB18Parser'] = None         # DB18 料仓电气数据解析器
@@ -193,7 +195,7 @@ _stats = {
 # ============================================================
 def init_parsers():
     """初始化解析器"""
-    global _modbus_parser, _db1_parser, _status_parser, _db41_parser, _db18_parser, _db19_parser, _furnace_converter
+    global _modbus_parser, _db1_parser, _db36_parser, _status_parser, _db41_parser, _db18_parser, _db19_parser, _furnace_converter
     
     if _modbus_parser is None:
         try:
@@ -208,6 +210,13 @@ def init_parsers():
             print(" DB1 弧流弧压解析器已初始化")
         except Exception as e:
             print(f" DB1 解析器初始化失败: {e}")
+    
+    if _db36_parser is None:
+        try:
+            _db36_parser = ConfigDrivenDB36Parser()
+            print(" DB36 持久化配置解析器已初始化")
+        except Exception as e:
+            print(f" DB36 解析器初始化失败: {e}")
     
     if _status_parser is None:
         try:
@@ -252,7 +261,7 @@ def get_parsers():
         
     注意: polling_loops_v2.py 使用元组格式调用此函数
     """
-    return _db1_parser, _modbus_parser, _status_parser, _db41_parser, _db18_parser, _db19_parser
+    return _db1_parser, _modbus_parser, _status_parser, _db41_parser, _db18_parser, _db19_parser, _db36_parser
 
 
 def get_parsers_dict():
@@ -268,6 +277,7 @@ def get_parsers_dict():
         'db41_parser': _db41_parser,
         'db18_parser': _db18_parser,
         'db19_parser': _db19_parser,
+        'db36_parser': _db36_parser,
         'converter': _furnace_converter
     }
 
@@ -611,6 +621,14 @@ def process_arc_data(raw_data: bytes, batch_code: str):
             # 获取最新能耗数据（使用已导入的 get_power_energy_calculator）
             realtime_power_data = power_calc.get_realtime_data()
             
+            # 合并紧急停电数据:
+            # DB1 仅提供 emergency_stop_flag, DB36 提供 arc_limit/delay/enabled
+            # 必须保留缓存中 DB36 已写入的字段, 避免被 DB1 高频轮询覆盖
+            existing_arc = data_cache.get_arc_data() or {}
+            existing_emergency = existing_arc.get('emergency_stop', {})
+            db1_emergency = parsed.get('emergency_stop', {})
+            existing_emergency.update(db1_emergency)  # 仅更新 DB1 的 flag 字段
+            
             # 构建弧流数据（包含能耗和紧急停电数据）
             arc_data = {
                 'arc_current': arc_cache['arc_current'],
@@ -619,7 +637,7 @@ def process_arc_data(raw_data: bytes, batch_code: str):
                 'energy_total': realtime_power_data.get('energy_total', 0.0),  # 添加能耗
                 'setpoints': arc_cache['setpoints'],
                 'manual_deadzone_percent': arc_cache['manual_deadzone_percent'],
-                'emergency_stop': parsed.get('emergency_stop', {}),  # 添加紧急停电数据
+                'emergency_stop': existing_emergency,  # 合并后的紧急停电数据
                 'timestamp': time.time()
             }
             
@@ -718,6 +736,65 @@ def process_arc_data(raw_data: bytes, batch_code: str):
             
     except Exception as e:
         print(f" 处理 DB1 弧流弧压数据失败: {e}")
+        traceback.print_exc()
+
+
+def process_db36_data(raw_data: bytes):
+    """处理 DB36 持久化配置数据
+
+    解析 DB36 中的高压紧急停电配置 (弧流上限、消抖时间、使能),
+    合并到 DataCache 的 arc_data['emergency_stop'] 字典中。
+
+    这些字段原先存放在 DB1 offset 182-189，现已迁移至 DB36。
+    DB1 仅保留 emergency_stop_flag (触发标志位)。
+
+    合并后 emergency_stop 字典包含:
+        - emergency_stop_flag       (来自 DB1, 由 process_arc_data 写入)
+        - emergency_stop_arc_limit  (来自 DB36)
+        - emergency_stop_delay      (来自 DB36)
+        - emergency_stop_enabled    (来自 DB36)
+    """
+    if not _db36_parser:
+        return
+
+    try:
+        # 1. 解析 DB36 原始数据
+        parsed = _db36_parser.parse(raw_data)
+        if 'error' in parsed:
+            print(f" DB36 解析失败: {parsed['error']}")
+            return
+
+        db36_emergency = parsed.get('emergency_stop', {})
+        if not db36_emergency:
+            return
+
+        # 2. 合并到 DataCache 的 arc_data
+        from backend.bridge.data_cache import get_data_cache
+        from backend.bridge.data_bridge import get_data_bridge
+
+        data_cache = get_data_cache()
+        data_bridge = get_data_bridge()
+
+        arc_data = data_cache.get_arc_data()
+        if arc_data is None:
+            arc_data = {}
+
+        # 取出当前 emergency_stop (DB1 的 flag 可能已写入)
+        emergency = arc_data.get('emergency_stop', {})
+
+        # 合并 DB36 的三个字段
+        emergency['emergency_stop_arc_limit'] = db36_emergency.get('emergency_stop_arc_limit', 8000)
+        emergency['emergency_stop_delay'] = db36_emergency.get('emergency_stop_delay', 0)
+        emergency['emergency_stop_enabled'] = db36_emergency.get('emergency_stop_enabled', True)
+
+        arc_data['emergency_stop'] = emergency
+
+        # 3. 写回缓存并通知前端
+        data_cache.set_arc_data(arc_data)
+        data_bridge.emit_arc_data(arc_data)
+
+    except Exception as e:
+        print(f" 处理 DB36 持久化配置数据失败: {e}")
         traceback.print_exc()
 
 
