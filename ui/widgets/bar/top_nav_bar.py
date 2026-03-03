@@ -13,6 +13,7 @@ from pathlib import Path
 from ui.styles.themes import ThemeManager
 from ui.widgets.common.switch_theme import SwitchTheme
 from ui.widgets.common.label_clock import LabelClock
+from backend.config import get_settings
 from backend.bridge.data_cache import get_data_cache
 from backend.bridge.service_manager import ServiceManager
 from backend.plc.plc_manager import get_plc_manager
@@ -132,7 +133,7 @@ class TopNavBar(QFrame):
         layout.addWidget(logo_bar)
         
         # 标题文字
-        title = QLabel("#1电炉")
+        title = QLabel(get_settings().app_name)
         title.setObjectName("nav_title")
         title.setFont(QFont("Microsoft YaHei", 16, QFont.Weight.Bold))
         layout.addWidget(title)

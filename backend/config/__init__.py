@@ -67,6 +67,29 @@ class Settings(BaseSettings):
         extra = "ignore"
         env_file_encoding = "utf-8"
         env_prefix = "FURNACE_"
+    
+    # ============================================================
+    # 由 number 自动推导的属性 (无需手动配置)
+    # ============================================================
+    @property
+    def device_id(self) -> str:
+        """设备ID, 如 furnace_1, furnace_3"""
+        return f"furnace_{self.number}"
+    
+    @property
+    def factory_area(self) -> str:
+        """厂区标识, 如 L1, L3"""
+        return f"L{self.number}"
+    
+    @property
+    def app_name(self) -> str:
+        """应用显示名称, 如 #1电炉, #3电炉"""
+        return f"#{self.number}\u7535\u7089"
+    
+    @property
+    def furnace_display_name(self) -> str:
+        """电炉显示名称, 如 1号电炉, 3号电炉"""
+        return f"{self.number}\u53f7\u7535\u7089"
 
 
 # 全局单例缓存

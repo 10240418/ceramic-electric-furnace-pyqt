@@ -9,16 +9,17 @@ from backend.services.polling_data_processor import (
     get_latest_weight_data,
     get_latest_electricity_data,
 )
+from backend.config import get_settings
 
-# 设备清单（目前 DB32 只对应一台电炉，预留扩展位）
-FURNACE_CONFIG = [
-    {"device_id": "furnace_1", "name": "1号电炉", "zones": 3},
-]
+# 设备清单（根据配置动态生成）
+def _build_furnace_config() -> list:
+    s = get_settings()
+    return [{"device_id": s.device_id, "name": s.furnace_display_name, "zones": 3}]
 
 
 def get_furnace_list() -> List[Dict[str, Any]]:
     """获取电炉列表"""
-    return FURNACE_CONFIG.copy()
+    return _build_furnace_config()
 
 
 def _build_realtime_payload(latest_modbus: Dict[str, Any], latest_status: Dict[str, Any]) -> Dict[str, Any]:

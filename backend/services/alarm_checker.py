@@ -7,10 +7,11 @@ from loguru import logger
 
 from backend.alarm_thresholds import get_alarm_threshold_manager
 from backend.core.alarm_store import log_alarm
+from backend.config import get_settings
 
 
 # 设备ID常量
-DEVICE_FURNACE = "furnace_1"
+DEVICE_FURNACE = get_settings().device_id
 DEVICE_ELECTRODE = "electrode"
 
 

@@ -75,6 +75,7 @@ from backend.tools.converter_elec_db1_simple import (
     ArcDataSimple,
 )
 from backend.services.db1.power_energy_calculator import get_power_energy_calculator
+from backend.config import get_settings
 
 
 # ============================================================
@@ -495,7 +496,7 @@ def process_modbus_data(raw_data: bytes):
                     'tags': {
                         'device_type': 'electric_furnace',
                         'module_type': 'cooling_water_total',
-                        'device_id': 'furnace_1',
+                        'device_id': get_settings().device_id,
                         'batch_code': batch_code
                     },
                     'fields': {
@@ -519,7 +520,7 @@ def process_modbus_data(raw_data: bytes):
                 'tags': {
                     'device_type': 'electric_furnace',
                     'module_type': 'cooling_system',
-                    'device_id': 'furnace_1',
+                    'device_id': get_settings().device_id,
                     'metric': 'pressure_diff',
                     'batch_code': batch_code
                 },

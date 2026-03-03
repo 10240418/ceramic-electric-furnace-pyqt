@@ -142,7 +142,8 @@ class MainWindow(QMainWindow):
         
     # 2. 初始化UI
     def init_ui(self):
-        self.setWindowTitle("#3电炉 - PyQt6")
+        from backend.config import get_settings
+        self.setWindowTitle(f"{get_settings().app_name} - PyQt6")
         
         # 隐藏系统标题栏，使用自定义工具栏
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)

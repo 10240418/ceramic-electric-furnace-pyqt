@@ -1,5 +1,5 @@
 """
-#3电炉 - PyQt6 前端 + 后端集成入口
+电炉 - PyQt6 前端 + 后端集成入口
 """
 import sys
 import os

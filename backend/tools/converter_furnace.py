@@ -38,12 +38,13 @@
 
 from typing import Dict, Any, List
 from datetime import datetime
+from backend.config import get_settings
 
 class FurnaceConverter:
     """电炉数据转换器"""
     
     def __init__(self):
-        pass
+        self._settings = get_settings()
         
     # ============================================================
     # 1: 数据转换主函数
@@ -61,11 +62,11 @@ class FurnaceConverter:
         """
         points = []
         
-        # 1. 基础 Tags (目前 DB32 主要是 1号电炉 的数据)
+        # 1. 基础 Tags (从配置读取设备标识)
         base_tags = {
             'device_type': 'electric_furnace',
-            'device_id': 'furnace_1',  # 暂时硬编码，理想情况应从配置读取映射
-            'factory_area': 'L3'
+            'device_id': self._settings.device_id,
+            'factory_area': self._settings.factory_area
         }
         
         # 添加批次号 tag

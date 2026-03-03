@@ -13,6 +13,7 @@ import yaml
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 from datetime import datetime
+from backend.config import get_settings
 
 
 class ConfigDrivenDB1Parser:
@@ -380,7 +381,7 @@ class ConfigDrivenDB1Parser:
             for f in self.fields
         ]
     
-    def parse_to_influx_point(self, data: bytes, device_id: str = "furnace_1") -> Dict[str, Any]:
+    def parse_to_influx_point(self, data: bytes, device_id: str = None) -> Dict[str, Any]:
         """解析并转换为 InfluxDB Point 格式
         
         Args:
@@ -390,6 +391,8 @@ class ConfigDrivenDB1Parser:
         Returns:
             InfluxDB Point 格式的字典
         """
+        if device_id is None:
+            device_id = get_settings().device_id
         parsed = self.parse(data)
         
         if 'error' in parsed:
@@ -449,7 +452,7 @@ def parse_db1_vw_data(data: bytes) -> Dict[str, Any]:
     return parser.parse(data)
 
 
-def parse_db1_to_influx(data: bytes, device_id: str = "furnace_1") -> Dict[str, Any]:
+def parse_db1_to_influx(data: bytes, device_id: str = None) -> Dict[str, Any]:
     """解析并转换为 InfluxDB 格式 (便捷函数)"""
     parser = get_db1_parser()
     return parser.parse_to_influx_point(data, device_id)
